@@ -1,13 +1,10 @@
-# app.py
 from flask import Flask, render_template, request, redirect, url_for, flash
 from camada_negocio.servicos import ServicoCadastro
 from modelos.usuario import Aluno
 
 app = Flask(__name__)
-# Chave secreta necessária para usar 'flash messages'
-app.secret_key = 'sua_chave_secreta_aqui' 
+app.secret_key = 'sua_chave_secreta_aqui'
 
-# Instancia o nosso serviço
 servico_cadastro = ServicoCadastro()
 
 @app.route('/')
@@ -46,8 +43,7 @@ def cadastrar_aluno():
             flash("Aluno cadastrado com sucesso!", "success") # Mensagem de sucesso
             return redirect(url_for('index')) # Redireciona para a página inicial
         else:
-            flash("Erro ao cadastrar aluno. Verifique os dados ou tente novamente.", "error") # Mensagem de erro
-            # Permanece na página de cadastro para o usuário corrigir
+            flash("Erro ao cadastrar aluno. Verifique os dados ou tente novamente.", "error")
             return render_template('cadastrar_aluno.html')
             
     # Se o método for GET, apenas exibe a página com o formulário em branco

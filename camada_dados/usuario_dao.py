@@ -11,7 +11,7 @@ class AlunoDAO:
         """
         conexao = conectar_banco()
         if not conexao:
-            return False # Retorna falha se não conseguiu conectar
+            return False
 
         cursor = conexao.cursor()
         try:
@@ -37,6 +37,5 @@ class AlunoDAO:
             return False
             
         finally:
-            # Garante que o cursor e a conexão serão fechados
             cursor.close()
             conexao.close()
