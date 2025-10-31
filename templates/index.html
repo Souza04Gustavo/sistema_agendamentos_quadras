@@ -1,33 +1,172 @@
 {% extends "layout.html" %}
 
-{% block titulo %}Página Principal{% endblock %}
+{% block titulo %}Página Inicial{% endblock %}
 
 {% block conteudo %}
-    
-    {# O template recebe uma variável 'usuario' do app.py #}
+<style>
+    body {
+        background-color: #f4f6fa;
+        font-family: 'Segoe UI', sans-serif;
+        margin: 0;
+        padding: 0;
+    }
+
+    /* Cabeçalho fixo azul */
+    header {
+        background-color: #0056b3; /* Azul principal */
+        color: white;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 25px 30px;
+        position: fixed;
+        width: 100%;
+        top: 0;
+        z-index: 1000;
+        box-shadow: 0 3px 8px rgba(0,0,0,0.15);
+    }
+
+    header h1 {
+        font-size: 24px;
+        margin: 0;
+        font-weight: 600;
+        letter-spacing: 0.5px;
+    }
+
+    /* Ícones do cabeçalho */
+    .icone {
+        font-size: 26px;
+        cursor: pointer;
+        color: white;
+        transition: transform 0.2s;
+    }
+
+    .icone:hover {
+        transform: scale(1.1);
+    }
+
+    /* Ajuste do sino */
+    .icone-direita {
+        margin-right: 50px;
+    }
+
+    /* Área principal (compensa o cabeçalho fixo) */
+    .conteudo-principal {
+        margin-top: 160px;
+        text-align: center;
+        padding: 20px;
+    }
+
+    h2 {
+        color: #333;
+        font-weight: 500;
+        margin-bottom: 10px;
+    }
+
+    p {
+        color: #555;
+        margin-bottom: 40px;
+    }
+
+    /* Botões principais */
+    .botoes {
+        display: flex;
+        justify-content: center;
+        gap: 30px;
+        flex-wrap: wrap;
+    }
+
+    .botao {
+        background-color: rgba(0, 86, 179, 0.15); /* Transparente com tom azul */
+        color: #0056b3;
+        text-decoration: none;
+        padding: 100px 40px;
+        border-radius: 10px;
+        font-weight: 600;
+        border: 2px solid #0056b3;
+        font-size: 16px;
+        transition: all 0.3s ease;
+        min-width: 200px;
+    }
+
+    .botao:hover {
+        background-color: #0056b3;
+        color: white;
+        box-shadow: 0 0 10px rgba(0,86,179,0.4);
+    }
+
+    /* Menu lateral */
+    .menu-lateral {
+        position: fixed;
+        left: -250px;
+        top: 0;
+        width: 250px;
+        height: 100%;
+        background-color: #004090;
+        color: white;
+        padding: 20px;
+        transition: left 0.3s ease;
+        z-index: 999;
+    }
+
+    .menu-lateral.aberto {
+        left: 0;
+    }
+
+    .menu-lateral h3 {
+        border-bottom: 1px solid rgba(255,255,255,0.3);
+        padding-bottom: 10px;
+        font-weight: 500;
+    }
+
+    .menu-lateral a {
+        color: white;
+        display: block;
+        margin: 15px 0;
+        text-decoration: none;
+        transition: color 0.3s;
+    }
+
+    .menu-lateral a:hover {
+        color: #a8c9ff;
+    }
+</style>
+
+<!-- Cabeçalho -->
+<header>
+    <span class="icone" onclick="abrirMenu()">&#9776;</span>
+    <h1>Sistema de Agendamento de Quadras</h1>
+    <span class="icone icone-direita">&#128276;</span> <!-- Sino -->
+</header>
+
+<!-- Menu lateral -->
+<div id="menuLateral" class="menu-lateral">
+    <h3>Menu</h3>
+    <a href="{{ url_for('meus_agendamentos') }}">Meus Agendamentos</a>
+    <a href="{{ url_for('novo_agendamento') }}">Novo Agendamento</a>
+    <a href="{{ url_for('logout') }}">Sair</a>
+</div>
+
+<!-- Conteúdo principal -->
+<div class="conteudo-principal">
     {% if usuario %}
-        <h2>Bem-vindo(a) de volta, {{ usuario.nome }}!</h2>
-        <p>Você está logado no Sistema de Agendamento de Quadras.</p>
-        <p>Seu tipo de acesso é: <strong>{{ usuario.tipo }}</strong>.</p>
-        
-        <br>
-        
-        {# Lógica para mostrar links diferentes dependendo do tipo de usuário #}
-        {% if usuario.tipo == 'admin' %}
-            <a href="{{ url_for('painel_admin') }}">Acessar Painel do Administrador</a>
-        {% elif usuario.tipo == 'funcionario' %}
-            <a href="{{ url_for('painel_funcionario') }}">Acessar Painel do Funcionário</a>
-        {% elif usuario.tipo == 'aluno' %}
-            <a href="{{ url_for('painel_aluno') }}">Acessar Painel do Aluno</a>
-        {% endif %}
+        <h2>Bem-vindo(a), {{ usuario.nome }}!</h2>
+        <p>Você está logado como <strong>{{ usuario.tipo }}</strong>.</p>
 
-        <br><br>
-        <a href="{{ url_for('logout') }}">Sair (Logout)</a>
-
+        <div class="botoes">
+            <a href="{{ url_for('meus_agendamentos') }}" class="botao">📋 Meus Agendamentos</a>
+            <a href="{{ url_for('novo_agendamento') }}" class="botao">🕒 Novo Agendamento</a>
+        </div>
     {% else %}
-        {# Isso não deve acontecer se a lógica no app.py estiver correta, mas é uma segurança #}
-        <h2>Ocorreu um erro.</h2>
-        <p>Não foi possível carregar suas informações. Tente fazer o <a href="{{ url_for('login') }}">login</a> novamente.</p>
+        <h2>Ocorreu um erro</h2>
+        <p>Por favor, faça <a href="{{ url_for('login') }}">login</a> novamente.</p>
     {% endif %}
+</div>
 
+<script>
+    function abrirMenu() {
+        const menu = document.getElementById("menuLateral");
+        menu.classList.toggle("aberto");
+    }
+</script>
 {% endblock %}
