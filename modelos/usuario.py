@@ -1,3 +1,4 @@
+
 class Usuario:
     def __init__(self, cpf, nome, email, senha, data_nasc, status='ativo'):
         self.cpf = cpf
