@@ -1,21 +1,54 @@
-from flask import Flask, render_template, request, redirect, url_for, flash
-from camada_negocio.servicos import ServicoCadastro
+
+from flask import Flask, render_template, request, redirect, url_for, session
+from datetime import datetime
+from camada_dados.usuario_dao import UsuarioDAO
 from modelos.usuario import Aluno
 
 app = Flask(__name__)
-app.secret_key = 'sua_chave_secreta_aqui'
-
-servico_cadastro = ServicoCadastro()
+app.secret_key = 'chave_muito_segura'
 
 @app.route('/')
-def index():
-    return "<h1>Página Inicial</h1><a href='/aluno/cadastrar'>Cadastrar Novo Aluno</a>"
+def home():
+    if 'usuario' not in session:
+        return redirect(url_for('login'))
+    return render_template('home.html', usuario=session['usuario'])
 
-@app.route('/aluno/cadastrar', methods=['GET', 'POST'])
-def cadastrar_aluno():
-    # Se o método for POST, significa que o usuário enviou o formulário
+@app.route('/login', methods=['GET', 'POST'])
+def login():
     if request.method == 'POST':
-        # 1. Coleta os dados do formulário
+        email = request.form['email']
+        senha = request.form['senha']
+
+        dao = UsuarioDAO()
+        usuario = dao.buscar_por_email(email)
+
+        if usuario and usuario.senha == senha:
+            session['usuario'] = {
+                'cpf': usuario.cpf,
+                'nome': usuario.nome,
+                'tipo': usuario.tipo
+            }
+            # Redireciona de acordo com tipo
+            if usuario.tipo == "admin":
+                return redirect(url_for('painel_admin'))
+            elif usuario.tipo in ["funcionario", "servidor"]:
+                return redirect(url_for('painel_funcionario'))
+            elif usuario.tipo == "aluno":
+                return redirect(url_for('painel_aluno'))
+
+        return render_template('login.html', erro="Credenciais inválidas")
+
+    return render_template('login.html')
+
+@app.route('/')
+@app.route('/index')
+def index():
+    return render_template('index.html')
+
+@app.route('/cadastrar_aluno', methods=['GET', 'POST'])
+def cadastrar_aluno():
+    if request.method == 'POST':
+        # Coleta os dados do formulário HTML
         cpf = request.form['cpf']
         nome = request.form['nome']
         email = request.form['email']
@@ -23,31 +56,60 @@ def cadastrar_aluno():
         data_nasc = request.form['data_nasc']
         matricula = request.form['matricula']
         curso = request.form['curso']
-        
-        # 2. Cria um objeto do tipo Aluno com os dados coletados
-        novo_aluno = Aluno(
+
+
+        ano_inicio = datetime.now().year
+
+
+        # Cria o objeto Aluno (garanta que sua classe Aluno aceita esses parâmetros)
+        aluno = Aluno(
             cpf=cpf,
             nome=nome,
             email=email,
             senha=senha,
             data_nasc=data_nasc,
+            status='ativo',
             matricula=matricula,
-            curso=curso
+            curso=curso,
+            ano_inicio=ano_inicio,
+            tipo='aluno'
         )
-        
-        # 3. Chama a camada de serviço para processar o cadastro
-        sucesso = servico_cadastro.cadastrar_aluno(novo_aluno)
-        
-        # 4. Fornece feedback ao usuário e redireciona
+
+        # Salva no banco
+        dao = UsuarioDAO()
+        sucesso = dao.salvar(aluno)
+
         if sucesso:
-            flash("Aluno cadastrado com sucesso!", "success") # Mensagem de sucesso
-            return redirect(url_for('index')) # Redireciona para a página inicial
+            flash("Aluno cadastrado com sucesso!", "success")
+            return redirect(url_for('cadastrar_aluno'))
         else:
-            flash("Erro ao cadastrar aluno. Verifique os dados ou tente novamente.", "error")
-            return render_template('cadastrar_aluno.html')
-            
-    # Se o método for GET, apenas exibe a página com o formulário em branco
+            flash("Erro ao cadastrar aluno.", "danger")
+
+    # Se for GET, apenas exibe o formulário
     return render_template('cadastrar_aluno.html')
 
-if __name__ == '__main__':
+@app.route('/logout')
+def logout():
+    session.clear()
+    return redirect(url_for('login'))
+
+@app.route('/painel_admin')
+def painel_admin():
+    if session.get('usuario', {}).get('tipo') != "admin":
+        return "Acesso restrito ao administrador", 403
+    return render_template('painel_admin.html', usuario=session['usuario'])
+
+@app.route('/painel_funcionario')
+def painel_funcionario():
+    if session.get('usuario', {}).get('tipo') not in ["funcionario", "admin"]:
+        return "Acesso restrito ao funcionário", 403
+    return render_template('painel_funcionario.html', usuario=session['usuario'])
+
+@app.route('/painel_aluno')
+def painel_aluno():
+    if session.get('usuario', {}).get('tipo') != "aluno":
+        return "Acesso restrito ao aluno", 403
+    return render_template('painel_aluno.html', usuario=session['usuario'])
+
+if __name__ == "__main__":
     app.run(debug=True)
