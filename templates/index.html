@@ -1,6 +1,33 @@
 {% extends "layout.html" %}
-{% block titulo %}Página Inicial{% endblock %}
+
+{% block titulo %}Página Principal{% endblock %}
+
 {% block conteudo %}
-<h2>Bem-vindo ao Sistema de Agendamento de Quadras</h2>
-<p>Escolha uma das opções no menu para continuar.</p>
+    
+    {# O template recebe uma variável 'usuario' do app.py #}
+    {% if usuario %}
+        <h2>Bem-vindo(a) de volta, {{ usuario.nome }}!</h2>
+        <p>Você está logado no Sistema de Agendamento de Quadras.</p>
+        <p>Seu tipo de acesso é: <strong>{{ usuario.tipo }}</strong>.</p>
+        
+        <br>
+        
+        {# Lógica para mostrar links diferentes dependendo do tipo de usuário #}
+        {% if usuario.tipo == 'admin' %}
+            <a href="{{ url_for('painel_admin') }}">Acessar Painel do Administrador</a>
+        {% elif usuario.tipo == 'funcionario' %}
+            <a href="{{ url_for('painel_funcionario') }}">Acessar Painel do Funcionário</a>
+        {% elif usuario.tipo == 'aluno' %}
+            <a href="{{ url_for('painel_aluno') }}">Acessar Painel do Aluno</a>
+        {% endif %}
+
+        <br><br>
+        <a href="{{ url_for('logout') }}">Sair (Logout)</a>
+
+    {% else %}
+        {# Isso não deve acontecer se a lógica no app.py estiver correta, mas é uma segurança #}
+        <h2>Ocorreu um erro.</h2>
+        <p>Não foi possível carregar suas informações. Tente fazer o <a href="{{ url_for('login') }}">login</a> novamente.</p>
+    {% endif %}
+
 {% endblock %}

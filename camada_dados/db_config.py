@@ -5,7 +5,7 @@ def conectar_banco():
         conexao = psycopg2.connect(
             dbname="agenda_quadra",
             user="postgres",
-            password="jose123", 
+            password="jose123",
             host="localhost",
             port="5432"
         )

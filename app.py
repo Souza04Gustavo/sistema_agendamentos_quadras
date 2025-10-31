@@ -1,13 +1,18 @@
 
-from flask import Flask, render_template, request, redirect, url_for, session
+from flask import Flask, render_template, request, redirect, url_for, session, flash
 from datetime import datetime
 from camada_dados.usuario_dao import UsuarioDAO
 from modelos.usuario import Aluno
+from camada_negocio.servicos import ServicoCadastro, ServicoLogin 
+
 
 app = Flask(__name__)
 app.secret_key = 'chave_muito_segura'
 
-@app.route('/')
+servico_cadastro = ServicoCadastro()
+servico_login = ServicoLogin()
+
+
 def home():
     if 'usuario' not in session:
         return redirect(url_for('login'))
@@ -18,32 +23,53 @@ def login():
     if request.method == 'POST':
         email = request.form['email']
         senha = request.form['senha']
+        print(f"DEBUG: Tentativa de login com email: {email}")
 
-        dao = UsuarioDAO()
-        usuario = dao.buscar_por_email(email)
+        # A lógica agora é delegada para a camada de serviço
+        usuario = servico_login.verificar_credenciais(email, senha)
 
-        if usuario and usuario.senha == senha:
-            session['usuario'] = {
+        if usuario:
+            # ---> INÍCIO DA MUDANÇA MAIS IMPORTANTE <---
+            print(f"DEBUG: Login BEM-SUCEDIDO para o usuário: {usuario.nome} (Tipo: {usuario.tipo})")
+            
+            # ATENÇÃO: É uma má prática armazenar o objeto inteiro na sessão.
+            # Armazenamos um dicionário com informações seguras e serializáveis.
+            session['usuario_logado'] = {
                 'cpf': usuario.cpf,
                 'nome': usuario.nome,
-                'tipo': usuario.tipo
+                'email': usuario.email,
+                'tipo': usuario.tipo 
             }
-            # Redireciona de acordo com tipo
-            if usuario.tipo == "admin":
-                return redirect(url_for('painel_admin'))
-            elif usuario.tipo in ["funcionario", "servidor"]:
-                return redirect(url_for('painel_funcionario'))
-            elif usuario.tipo == "aluno":
-                return redirect(url_for('painel_aluno'))
+            print(f"DEBUG: Informações do usuário armazenadas na sessão: {session['usuario_logado']}")
 
-        return render_template('login.html', erro="Credenciais inválidas")
+            flash(f'Bem-vindo, {usuario.nome}!', 'success')
+            return redirect(url_for('index')) # Redireciona para a página principal
+            # ---> FIM DA MUDANÇA MAIS IMPORTANTE <---
+        else:
+            # Login falhou
+            print(f"DEBUG: Login FALHOU para o email: {email}")
+            flash('Email ou senha inválidos.', 'error')
+            # Permanece na página de login para tentar de novo
+            return redirect(url_for('login')) 
 
+    # Se o método for GET, apenas exibe a página de login
     return render_template('login.html')
 
 @app.route('/')
 @app.route('/index')
 def index():
-    return render_template('index.html')
+    print(f"DEBUG: Acessando a rota index. Conteúdo da sessão: {session}")
+    # Verifica se a chave 'usuario_logado' existe na sessão
+    if 'usuario_logado' in session:
+        # Se existe, o usuário está logado. Renderiza a página principal.
+        usuario_info = session['usuario_logado']
+        print(f"DEBUG: Usuário está logado. Renderizando index.html para {usuario_info['nome']}")
+        return render_template('index.html', usuario=usuario_info)
+    else:
+        # Se não existe, o usuário não está logado. Redireciona para o login.
+        print("DEBUG: Usuário não está na sessão. Redirecionando para /login.")
+        flash('Por favor, faça o login para acessar o sistema.', 'info')
+        return redirect(url_for('login'))
 
 @app.route('/cadastrar_aluno', methods=['GET', 'POST'])
 def cadastrar_aluno():
