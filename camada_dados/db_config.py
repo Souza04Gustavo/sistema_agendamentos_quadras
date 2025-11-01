@@ -2,6 +2,8 @@ import psycopg2
 
 def conectar_banco():
     try:
+        '''
+        # BANCO DO JOSÉ
         conexao = psycopg2.connect(
             dbname="agenda_quadra",
             user="postgres",
@@ -9,6 +11,18 @@ def conectar_banco():
             host="localhost",
             port="5432"
         )
+        '''
+        
+        # BANCO DO GUSTAVO
+        conexao = psycopg2.connect(
+            dbname="sistema_gerenciamento_quadras",
+            user="postgres",
+            password="password",
+            host="localhost",
+            port="5432"
+        )
+        
+        
         print("✅ Conexão com o banco estabelecida com sucesso.")
         return conexao
 

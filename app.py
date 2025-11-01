@@ -153,5 +153,34 @@ def painel_aluno():
         return "Acesso restrito ao aluno", 403
     return render_template('painel_aluno.html', usuario=session['usuario'])
 
+@app.route('/admin/quadras')
+def admin_gerenciar_quadras():
+    # Passo 1: Proteção da rota
+    if session.get('usuario_logado', {}).get('tipo') != 'admin':
+        flash('Acesso negado. Apenas administradores podem ver esta página.', 'error')
+        return redirect(url_for('index'))
+    
+    # Passo 2: Lógica (por enquanto, apenas uma mensagem)
+    # No futuro, aqui chamaremos o serviço para buscar as quadras
+    return "<h1>Página de Gestão de Quadras (Admin) - Em construção</h1>"
+
+@app.route('/admin/usuarios')
+def admin_gerenciar_usuarios():
+    # Proteção da rota
+    if session.get('usuario_logado', {}).get('tipo') != 'admin':
+        flash('Acesso negado.', 'error')
+        return redirect(url_for('index'))
+
+    return "<h1>Página de Gestão de Usuários (Admin) - Em construção</h1>"
+
+@app.route('/admin/agendamentos')
+def admin_ver_agendamentos():
+    # Proteção da rota
+    if session.get('usuario_logado', {}).get('tipo') != 'admin':
+        flash('Acesso negado.', 'error')
+        return redirect(url_for('index'))
+        
+    return "<h1>Página de Visualização de Todos Agendamentos (Admin) - Em construção</h1>"
+
 if __name__ == "__main__":
     app.run(debug=True)

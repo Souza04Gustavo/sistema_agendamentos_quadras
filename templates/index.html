@@ -144,6 +144,14 @@
     <h3>Menu</h3>
     <a href="{{ url_for('meus_agendamentos') }}">Meus Agendamentos</a>
     <a href="{{ url_for('novo_agendamento') }}">Novo Agendamento</a>
+    {# Verifica se a variável 'usuario' existe e se o tipo é 'admin' #}
+    {% if usuario and usuario.tipo == 'admin' %}
+        <hr style="border-color: rgba(255,255,255,0.2); margin: 15px 0;">
+        <h3 style="margin-bottom: 5px;">Painel Admin</h3>
+        <a href="{{ url_for('admin_gerenciar_quadras') }}">Gerenciar Quadras</a>
+        <a href="{{ url_for('admin_gerenciar_usuarios') }}">Gerenciar Usuários</a>
+        <a href="{{ url_for('admin_ver_agendamentos') }}">Ver Todos Agendamentos</a>
+    {% endif %}
     <a href="{{ url_for('logout') }}">Sair</a>
 </div>
 
