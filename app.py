@@ -1,18 +1,22 @@
 
 
 from flask import Flask, render_template, request, redirect, url_for, session, flash
-from datetime import datetime
+from datetime import datetime, timedelta
 from camada_dados.usuario_dao import UsuarioDAO
 from modelos.usuario import Aluno
-from camada_negocio.servicos import ServicoCadastro, ServicoLogin 
+from camada_negocio.servicos import ServicoCadastro, ServicoLogin, ServicoAdmin
 from camada_dados.agendamento_dao import buscar_agendamentos_por_usuario
-
+from camada_dados.agendamento_dao import buscar_agendamentos_por_quadra # Novo
+from camada_dados.agendamento_dao import buscar_quadras_por_ginasio # Novo
+from camada_dados.agendamento_dao import buscar_ginasios # Novo
+from camada_dados.agendamento_dao import get_ginasio_por_id # Novo
 
 app = Flask(__name__)
 app.secret_key = 'chave_muito_segura'
 
 servico_cadastro = ServicoCadastro()
 servico_login = ServicoLogin()
+servico_admin = ServicoAdmin()
 
 @app.route('/')
 @app.route('/index')
@@ -111,7 +115,6 @@ def cadastrar_aluno():
     # Se for GET, apenas exibe o formulário
     return render_template('cadastrar_aluno.html')
 
-
 @app.route("/meus_agendamentos")
 def meus_agendamentos():
     if "usuario_logado" not in session:
@@ -125,10 +128,9 @@ def meus_agendamentos():
 
 @app.route('/novo_agendamento')
 def novo_agendamento():
-    # Aqui futuramente você vai listar as quadras e horários disponíveis
-    # Por enquanto, apenas renderiza uma página simples
-    return render_template('novo_agendamento.html')
-
+    # Aqui vamos listar todos os ginásios
+    ginasios = buscar_ginasios()
+    return render_template('novo_agendamento.html', ginasios=ginasios)
 
 @app.route('/logout')
 def logout():
@@ -153,25 +155,73 @@ def painel_aluno():
         return "Acesso restrito ao aluno", 403
     return render_template('painel_aluno.html', usuario=session['usuario'])
 
-@app.route('/admin/quadras')
-def admin_gerenciar_quadras():
-    # Passo 1: Proteção da rota
+@app.route('/novo_agendamento/<int:ginasio_id>')
+def selecionar_quadra(ginasio_id):
+    quadras = buscar_quadras_por_ginasio(ginasio_id)
+    gin = get_ginasio_por_id(ginasio_id)
+    return render_template('selecionar_quadra.html', gin=ginasio_id, nome_ginasio=gin.nome, quadras=quadras)
+
+
+# --- SESSÃO DO ADMIN ABAIXO: ---
+@app.route('/novo_agendamento/<int:ginasio_id>/<int:quadra_id>')
+def tabela_agendamento(ginasio_id, quadra_id):
+    hoje = datetime.today()
+    segunda = hoje - timedelta(days=hoje.weekday())
+    dias = [segunda + timedelta(days=i) for i in range(7)]
+
+    agendamentos = buscar_agendamentos_por_quadra(quadra_id, dias[0], dias[-1])
+
+    horarios = [f"{h}:00" for h in range(7, 24)]
+    
+    agendamentos_por_dia = {d.date(): {h: None for h in horarios} for d in dias}
+    for a in agendamentos:
+        # Supondo que o agendamento 'a' é uma tupla/lista do banco
+        data_agendamento = a[4].date() # Ajuste o índice se a ordem das colunas for diferente
+        hora_agendamento = f"{a[4].hour}:00" # Ajuste o índice
+        if data_agendamento in agendamentos_por_dia and hora_agendamento in agendamentos_por_dia[data_agendamento]:
+            agendamentos_por_dia[data_agendamento][hora_agendamento] = a
+
+    return render_template(
+        'tabela_agendamento.html',
+        dias=dias,
+        horarios=horarios,
+        agendamentos_por_dia=agendamentos_por_dia,
+        ginasio_id=ginasio_id,
+        quadra_id=quadra_id
+    )
+
+@app.route('/admin/usuarios', methods=['GET', 'POST'])
+def admin_gerenciar_usuarios():
+    # Proteção da rota - verifica se o usuário é admin
     if session.get('usuario_logado', {}).get('tipo') != 'admin':
         flash('Acesso negado. Apenas administradores podem ver esta página.', 'error')
         return redirect(url_for('index'))
+
+    # Lógica para o método POST (quando o admin clica em "Ativar/Desativar")
+    if request.method == 'POST':
+        # Coleta os dados enviados pelo formulário do botão
+        cpf_usuario = request.form['cpf']
+        status_atual = request.form['status_atual']
+        
+        print(f"DEBUG[Rota]: Recebida requisição POST para alterar status do CPF: {cpf_usuario}")
+        
+        # Chama o serviço para executar a ação
+        sucesso = servico_admin.alterar_status_usuario(cpf_usuario, status_atual)
+        
+        if sucesso:
+            flash('Status do usuário alterado com sucesso!', 'success')
+        else:
+            flash('Ocorreu um erro ao alterar o status do usuário.', 'error')
+        
+        # Redireciona de volta para a mesma página para recarregar a lista
+        return redirect(url_for('admin_gerenciar_usuarios'))
+
+    # Lógica para o método GET (quando a página é carregada pela primeira vez)
+    print("DEBUG[Rota]: Carregando a lista de usuários para a página de gerenciamento.")
+    lista_de_usuarios = servico_admin.listar_usuarios()
     
-    # Passo 2: Lógica (por enquanto, apenas uma mensagem)
-    # No futuro, aqui chamaremos o serviço para buscar as quadras
-    return "<h1>Página de Gestão de Quadras (Admin) - Em construção</h1>"
-
-@app.route('/admin/usuarios')
-def admin_gerenciar_usuarios():
-    # Proteção da rota
-    if session.get('usuario_logado', {}).get('tipo') != 'admin':
-        flash('Acesso negado.', 'error')
-        return redirect(url_for('index'))
-
-    return "<h1>Página de Gestão de Usuários (Admin) - Em construção</h1>"
+    # Renderiza o template, passando a lista de usuários para ele
+    return render_template('admin_gerenciar_usuarios.html', usuarios=lista_de_usuarios)
 
 @app.route('/admin/agendamentos')
 def admin_ver_agendamentos():
@@ -181,6 +231,47 @@ def admin_ver_agendamentos():
         return redirect(url_for('index'))
         
     return "<h1>Página de Visualização de Todos Agendamentos (Admin) - Em construção</h1>"
+
+@app.route('/admin/quadras', methods=['GET', 'POST'])
+def admin_gerenciar_quadras():
+    # Proteção da rota
+    if session.get('usuario_logado', {}).get('tipo') != 'admin':
+        flash('Acesso negado.', 'error')
+        return redirect(url_for('index'))
+
+    # Lógica para o método POST (quando o admin clica em "Salvar" ou "Excluir")
+    if request.method == 'POST':
+        # Os dados do formulário nos dizem qual ação tomar
+        acao = request.form.get('acao')
+        id_ginasio = request.form.get('id_ginasio')
+        num_quadra = request.form.get('num_quadra')
+
+        if acao == 'atualizar_status':
+            novo_status = request.form.get('novo_status')
+            sucesso = servico_admin.alterar_status_quadra(id_ginasio, num_quadra, novo_status)
+            if sucesso:
+                flash(f'Status da quadra {num_quadra} do ginásio {id_ginasio} atualizado com sucesso!', 'success')
+            else:
+                flash('Erro ao atualizar o status da quadra.', 'error')
+        
+        elif acao == 'excluir':
+            sucesso = servico_admin.remover_quadra(id_ginasio, num_quadra)
+            if sucesso:
+                flash(f'Quadra {num_quadra} do ginásio {id_ginasio} excluída com sucesso!', 'success')
+            else:
+                flash('Erro ao excluir a quadra. Verifique se existem dependências.', 'error')
+        
+        return redirect(url_for('admin_gerenciar_quadras'))
+
+    # Lógica para o método GET (carregar a página)
+    lista_de_quadras = servico_admin.listar_quadras_para_gerenciar()
+    
+    # Lista de status possíveis para preencher o dropdown no HTML
+    status_possiveis = ['disponivel', 'manutencao', 'interditada']
+    
+    return render_template('admin_gerenciar_quadras.html', 
+                           quadras=lista_de_quadras, 
+                           status_possiveis=status_possiveis)
 
 if __name__ == "__main__":
     app.run(debug=True)

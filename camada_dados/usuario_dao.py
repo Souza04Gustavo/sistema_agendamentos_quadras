@@ -1,5 +1,6 @@
 from camada_dados.db_config import conectar_banco
 from modelos.usuario import Aluno, Funcionario, Admin
+import psycopg2.extras
 
 
 class AlunoDao:
@@ -112,7 +113,6 @@ class UsuarioDAO:
             cursor.close()
             conexao.close()
 
-
     def buscar_por_email(self, email):
         """
         Busca um usuário no banco de dados pelo seu email e reconstrói o objeto
@@ -194,3 +194,100 @@ class UsuarioDAO:
         finally:
             cursor.close()
             conexao.close()
+            
+    def buscar_todos_os_usuarios(self):
+        """
+        Busca todos os usuários do sistema e determina o tipo de cada um.
+        Retorna uma lista de dicionários, onde cada dicionário representa um usuário.
+        """
+        conexao = conectar_banco()
+        if not conexao:
+            print("Erro: Não foi possível conectar ao banco de dados.")
+            return []
+        
+        # Usamos um cursor que retorna dicionários para facilitar o acesso no template
+        cursor = conexao.cursor(cursor_factory=psycopg2.extras.DictCursor)
+        
+        usuarios = []
+        try:
+            # Esta query usa LEFT JOIN para conectar as tabelas e CASE para definir o tipo
+            query = """
+                SELECT 
+                    u.cpf, 
+                    u.nome, 
+                    u.email, 
+                    u.status,
+                    CASE
+                        WHEN a.cpf IS NOT NULL THEN 'Admin'
+                        WHEN f.cpf IS NOT NULL THEN 'Funcionário'
+                        WHEN al.cpf IS NOT NULL THEN 'Aluno'
+                        WHEN s.cpf IS NOT NULL THEN 'Servidor'
+                        ELSE 'Usuário'
+                    END as tipo
+                FROM 
+                    usuario u
+                LEFT JOIN 
+                    aluno al ON u.cpf = al.cpf
+                LEFT JOIN 
+                    servidor s ON u.cpf = s.cpf
+                LEFT JOIN 
+                    admin a ON u.cpf = a.cpf
+                LEFT JOIN 
+                    funcionario f ON u.cpf = f.cpf
+                ORDER BY 
+                    u.nome;
+            """
+            cursor.execute(query)
+            # fetchall() com DictCursor retorna uma lista de objetos semelhantes a dicionários
+            resultados = cursor.fetchall()
+
+            # Convertemos os resultados para dicionários padrão do Python
+            for linha in resultados:
+                usuarios.append(dict(linha))
+            
+            print(f"DEBUG[DAO]: {len(usuarios)} usuários encontrados no banco de dados.")
+
+        except Exception as e:
+            print(f"Erro ao buscar todos os usuários: {e}")
+        finally:
+            cursor.close()
+            conexao.close()
+            
+        return usuarios
+        
+    def atualizar_status_usuario(self, cpf, novo_status):
+        """
+        Atualiza o status de um usuário ('ativo' ou 'inativo') no banco de dados.
+        Retorna True em caso de sucesso, False em caso de falha.
+        """
+        # Validação simples para garantir que o status é válido
+        if novo_status not in ['ativo', 'inativo']:
+            print(f"Erro: Status '{novo_status}' é inválido.")
+            return False
+
+        conexao = conectar_banco()
+        if not conexao:
+            return False
+        
+        cursor = conexao.cursor()
+        sucesso = False
+        try:
+            query = "UPDATE usuario SET status = %s WHERE cpf = %s"
+            cursor.execute(query, (novo_status, cpf))
+            conexao.commit()
+            
+            # rowcount retorna o número de linhas afetadas. Se for > 0, a atualização funcionou.
+            if cursor.rowcount > 0:
+                print(f"DEBUG[DAO]: Status do usuário CPF {cpf} atualizado para '{novo_status}'.")
+                sucesso = True
+            else:
+                print(f"DEBUG[DAO]: Nenhum usuário encontrado com o CPF {cpf}. Nenhuma atualização foi feita.")
+
+        except Exception as e:
+            conexao.rollback()
+            print(f"Erro ao atualizar status do usuário: {e}")
+        finally:
+            cursor.close()
+            conexao.close()
+            
+        return sucesso

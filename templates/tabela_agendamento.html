@@ -1,0 +1,45 @@
+{% extends "layout.html" %}
+
+{% block titulo %}Agendamento - Quadra{% endblock %}
+
+{% block conteudo %}
+<h2 style="text-align: center; color: var(--cor-principal); margin-bottom: 20px;">
+    Passo 3: Tabela de Horários
+</h2>
+
+<!-- A tabela simples, como na versão original que você gostou -->
+<table border="1" style="width: 100%; border-collapse: collapse; background-color: white;">
+    <thead>
+        <tr style="background-color: #f2f2f2;">
+            <th style="padding: 8px;">Horário</th>
+            {% for dia in dias %}
+                <th style="padding: 8px;">{{ dia.strftime("%A") }}<br><small>{{ dia.strftime("%d/%m") }}</small></th>
+            {% endfor %}
+        </tr>
+    </thead>
+    <tbody>
+        {% for hora in horarios %}
+        <tr>
+            <td style="padding: 8px; text-align: center; font-weight: bold;">{{ hora }}</td>
+            {% for dia in dias %}
+                {% set ag = agendamentos_por_dia[dia.date()][hora] %}
+                
+                {# A lógica original que você preferiu #}
+                {% if ag %}
+                    <td style="background-color: lightblue; text-align: center; padding: 8px;">Ocupado</td>
+                {% else %}
+                    <td style="padding: 8px;"></td>
+                {% endif %}
+
+            {% endfor %}
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+
+<br>
+
+<a href="{{ url_for('selecionar_quadra', ginasio_id=ginasio_id) }}" style="text-decoration: none; font-weight: bold; color: var(--cor-principal);">
+    ← Voltar para a seleção de quadras
+</a>
+{% endblock %}
