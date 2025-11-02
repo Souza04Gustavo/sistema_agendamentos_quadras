@@ -77,13 +77,28 @@
         main { padding: 20px; margin-top: 80px; }
         
         .menu-lateral {
-            position: fixed; left: -250px; top: 0; width: 250px; height: 100%;
-            background-color: var(--cor-secundaria); color: var(--cor-texto-claro);
-            padding: 20px; transition: left 0.3s ease; z-index: 1001;
+            position: fixed;
+            top: 0;
+            left: 0; /* Começa posicionado no canto */
+            width: 210px;
+            height: 100%;
+            background-color: var(--cor-secundaria);
+            color: var(--cor-texto-claro);
+            padding: 20px;
+            z-index: 1001;
             box-shadow: 4px 0px 10px rgba(0,0,0,0.2);
+            /* Esconde o menu movendo-o 100% para a esquerda e tornando-o transparente */
+            transform: translateX(-100%);
+            opacity: 0;
+            /* A transição agora é na transformação e na opacidade */
+            transition: transform 0.3s ease, opacity 0.3s ease;
         }
 
-        .menu-lateral.aberto { left: 0; }
+        .menu-lateral.aberto {
+            /* Traz o menu de volta à sua posição original e o torna visível */
+            transform: translateX(0);
+            opacity: 1;
+        }
         .menu-lateral h3 { border-bottom: 1px solid rgba(255,255,255,0.3); padding-bottom: 10px; }
         .menu-lateral a { color: var(--cor-texto-claro); display: block; margin: 15px 0; text-decoration: none; transition: color 0.2s; }
         .menu-lateral a:hover { color: #a8c9ff; }
@@ -131,7 +146,12 @@
             
             <!-- ======================== FIM DA ALTERAÇÃO (HTML) ========================= -->
             
-            <a href="{{ url_for('index') }}" class="icone" title="Página Inicial">&#8962;</a>
+            <a href="{{ url_for('index') }}" class="icone" title="Página Inicial">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16">
+                    <path d="M8.707 1.5a1 1 0 0 0-1.414 0L.646 8.146a.5.5 0 0 0 .708.708L8 2.207l6.646 6.647a.5.5 0 0 0 .708-.708L8.707 1.5z"/>
+                    <path d="m8 3.293 6 6V13.5a1.5 1.5 0 0 1-1.5 1.5h-9A1.5 1.5 0 0 1 2 13.5V9.293z"/>
+                </svg>
+            </a>
             <span class="icone">&#128276;</span>
         </div>
     </header>
@@ -150,6 +170,12 @@
             <h3>Painel Admin</h3>
             <a href="{{ url_for('admin_gerenciar_quadras') }}">Gerenciar Quadras</a>
             <a href="{{ url_for('admin_gerenciar_usuarios') }}">Gerenciar Usuários</a>
+            <a href="{{ url_for('admin_gerenciar_materiais') }}">Gerenciar Materiais</a>
+            <a href="{{ url_for('admin_gerenciar_ginasios') }}">Gerenciar Ginásios</a>
+            <a href="{{ url_for('admin_ver_agendamentos') }}">Ver Todos Agendamentos</a>
+            <a href="{{ url_for('admin_gerenciar_chamados') }}">Gerenciar Chamados</a>
+            <a href="{{ url_for('admin_gerenciar_esportes') }}">Gerenciar Esportes</a>
+            <a href="{{ url_for('admin_gerenciar_eventos') }}">Gerenciar Eventos</a>
         {% endif %}
         <a href="{{ url_for('logout') }}">Sair</a>
     </div>

@@ -291,3 +291,65 @@ class UsuarioDAO:
             conexao.close()
             
         return sucesso
+    
+    def excluir_usuario(self, cpf):
+        """
+        Exclui um usuário e seus registros dependentes (aluno, servidor, etc.).
+        Retorna True em caso de sucesso, False em caso de falha.
+        """
+        conexao = conectar_banco()
+        if not conexao:
+            return False
+        
+        cursor = conexao.cursor()
+        sucesso = False
+        try:
+            # ON DELETE CASCADE na tabela 'usuario' cuidará de apagar os registros
+            # em 'aluno', 'servidor', 'admin', 'funcionario'.
+            query = "DELETE FROM usuario WHERE cpf = %s"
+            cursor.execute(query, (cpf,))
+            conexao.commit()
+            if cursor.rowcount > 0:
+                sucesso = True
+                print(f"DEBUG[DAO]: Usuário CPF {cpf} excluído com sucesso.")
+        except Exception as e:
+            conexao.rollback()
+            print(f"Erro ao excluir usuário: {e}")
+        finally:
+            cursor.close()
+            conexao.close()
+        return sucesso
+    
+    def buscar_todos_os_servidores(self):
+        """
+        Busca todos os usuários que são servidores e retorna seus nomes e IDs.
+        Ideal para preencher um dropdown de supervisores.
+        """
+        conexao = conectar_banco()
+        if not conexao:
+            return []
+        
+        # Usamos DictCursor para facilitar o acesso por nome da coluna
+        cursor = conexao.cursor(cursor_factory=psycopg2.extras.DictCursor)
+        servidores = []
+        try:
+            # Query que junta 'usuario' e 'servidor' para pegar o nome e o ID
+            query = """
+                SELECT u.nome, s.id_servidor 
+                FROM usuario u
+                JOIN servidor s ON u.cpf = s.cpf
+                ORDER BY u.nome;
+            """
+            cursor.execute(query)
+            resultados = cursor.fetchall()
+            for linha in resultados:
+                servidores.append(dict(linha))
+            
+            print(f"DEBUG[DAO]: Encontrados {len(servidores)} servidores para supervisão.")
+        except Exception as e:
+            print(f"Erro ao buscar servidores: {e}")
+        finally:
+            cursor.close()
+            conexao.close()
+            
+        return servidores

@@ -1,6 +1,146 @@
 from camada_dados.db_config import conectar_banco
+import psycopg2.extras
 from modelos.ginasio import Ginasio
 from modelos.quadra import Quadra
+
+class AgendamentoDAO:
+    # --- MÉTODOS NOVOS PARA O ADMINISTRADOR ---
+
+    def buscar_todos_os_agendamentos(self):
+        """
+        Busca todos os agendamentos do sistema, juntando informações do usuário e do ginásio.
+        Retorna uma lista de dicionários.
+        """
+        conexao = conectar_banco()
+        if not conexao:
+            return []
+        
+        cursor = conexao.cursor(cursor_factory=psycopg2.extras.DictCursor)
+        agendamentos = []
+        try:
+            query = """
+                SELECT
+                    a.id_agendamento,
+                    a.hora_ini,
+                    a.hora_fim,
+                    a.status_agendamento,
+                    a.num_quadra,
+                    g.nome AS nome_ginasio,
+                    u.nome AS nome_usuario
+                FROM
+                    agendamento a
+                JOIN
+                    usuario u ON a.cpf_usuario = u.cpf
+                JOIN
+                    ginasio g ON a.id_ginasio = g.id_ginasio
+                ORDER BY
+                    a.hora_ini DESC;
+            """
+            cursor.execute(query)
+            resultados = cursor.fetchall()
+            for linha in resultados:
+                agendamentos.append(dict(linha))
+            print(f"DEBUG[DAO]: {len(agendamentos)} agendamentos totais encontrados.")
+        except Exception as e:
+            print(f"Erro ao buscar todos os agendamentos: {e}")
+        finally:
+            cursor.close()
+            conexao.close()
+        return agendamentos
+
+    def admin_atualizar_status(self, id_agendamento, novo_status):
+        """
+        Permite que um administrador altere o status de qualquer agendamento.
+        Retorna True em caso de sucesso, False em caso de falha.
+        """
+        if novo_status not in ['confirmado', 'cancelado', 'realizado', 'nao_compareceu']:
+            print(f"Erro: Status '{novo_status}' é inválido.")
+            return False
+
+        conexao = conectar_banco()
+        if not conexao:
+            return False
+            
+        cursor = conexao.cursor()
+        sucesso = False
+        try:
+            # Corrigido para usar a chave primária correta: id_agendamento
+            query = "UPDATE agendamento SET status_agendamento = %s WHERE id_agendamento = %s"
+            cursor.execute(query, (novo_status, id_agendamento))
+            conexao.commit()
+            if cursor.rowcount > 0:
+                sucesso = True
+                print(f"DEBUG[DAO]: Status do agendamento ID {id_agendamento} atualizado para '{novo_status}'.")
+        except Exception as e:
+            conexao.rollback()
+            print(f"Erro ao atualizar status do agendamento (admin): {e}")
+        finally:
+            cursor.close()
+            conexao.close()
+        return sucesso
+
+    # --- MÉTODOS EXISTENTES (AGORA DENTRO DA CLASSE) ---
+
+    def buscar_agendamentos_por_usuario(self, cpf_usuario):
+        """
+        Retorna todos os agendamentos realizados por um determinado usuário.
+        (Refatorado para ser um método de classe)
+        """
+        conexao = conectar_banco()
+        if not conexao:
+            return []
+            
+        cursor = conexao.cursor(cursor_factory=psycopg2.extras.DictCursor)
+        agendamentos = []
+        try:
+            query = """
+                SELECT a.id_agendamento, a.data_solicitacao, a.hora_ini, a.hora_fim, a.status_agendamento,
+                       a.num_quadra, g.nome AS nome_ginasio
+                FROM agendamento a
+                JOIN ginasio g ON a.id_ginasio = g.id_ginasio
+                WHERE a.cpf_usuario = %s
+                ORDER BY a.hora_ini DESC;
+            """
+            cursor.execute(query, (cpf_usuario,))
+            resultados = cursor.fetchall()
+            for row in resultados:
+                agendamentos.append(dict(row))
+        except Exception as e:
+            print(f"Erro ao buscar agendamentos por usuário: {e}")
+        finally:
+            cursor.close()
+            conexao.close()
+        return agendamentos
+
+    def buscar_agendamentos_por_quadra(self, id_ginasio, num_quadra, data_inicio, data_fim):
+        """
+        Busca agendamentos para uma quadra específica dentro de um intervalo de datas.
+        (Refatorado e corrigido para receber id_ginasio)
+        """
+        conexao = conectar_banco()
+        if not conexao:
+            return []
+            
+        cursor = conexao.cursor(cursor_factory=psycopg2.extras.DictCursor)
+        agendamentos = []
+        try:
+            query = """
+                SELECT * 
+                FROM agendamento
+                WHERE id_ginasio = %s AND num_quadra = %s AND hora_ini BETWEEN %s AND %s
+                ORDER BY hora_ini
+            """
+            cursor.execute(query, (id_ginasio, num_quadra, data_inicio, data_fim))
+            resultados = cursor.fetchall()
+            for row in resultados:
+                agendamentos.append(dict(row))
+        except Exception as e:
+            print(f"Erro ao buscar agendamentos por quadra: {e}")
+        finally:
+            cursor.close()
+            conexao.close()
+        return agendamentos
+
 
 
 # ==========================================================

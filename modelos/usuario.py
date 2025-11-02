@@ -35,8 +35,8 @@ class Servidor(Usuario):
 
 
 class Funcionario(Servidor):
-    def __init__(self, cpf, nome, email, senha, data_nasc, id_servidor, data_admissao, departamento, cargo):
-        super().__init__(cpf, nome, email, senha, data_nasc, id_servidor, data_admissao)
+    def __init__(self, cpf, nome, email, senha, data_nasc, id_servidor, data_admissao, departamento, cargo, status='ativo'):
+        super().__init__(cpf, nome, email, senha, data_nasc, id_servidor, data_admissao, status)
         self.departamento = departamento
         self.cargo = cargo
         self.tipo = "funcionario"

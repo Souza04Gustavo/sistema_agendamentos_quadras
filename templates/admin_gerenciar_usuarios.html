@@ -61,13 +61,28 @@
     }
     .btn-ativar { background-color: #28a745; }
     .btn-desativar { background-color: #dc3545; }
+    .btn-excluir { background-color: #dc3545; }
+
+    .btn {
+        padding: 8px 15px;
+        border: none;
+        border-radius: 5px;
+        color: white;
+        cursor: pointer;
+        font-weight: bold;
+        text-decoration: none; /* Para garantir que o link se pareça com um botão */
+        display: inline-block; /* Para o link respeitar padding e margin */
+    }
+    .btn-salvar { background-color: var(--cor-principal);}
+    .btn-salvar:hover { background-color: var(--cor-secundaria);}
+
 </style>
 {% endblock %}
 
 {% block conteudo %}
 <div class="card-principal">
     <h2 class="titulo-pagina">👥 Gerenciamento de Usuários</h2>
-    
+    <a href="{{ url_for('admin_adicionar_usuario') }}" class="btn btn-salvar">Adicionar Novo Usuário</a>
     <div style="overflow-x: auto;"> <!-- Para rolagem em telas pequenas -->
         <table class="tabela-usuarios">
             <thead>
@@ -92,7 +107,15 @@
                     </td>
                     <td style="text-align: center;">
                         <!-- Pequeno formulário para cada botão -->
-                        <form method="POST" style="display: inline;">
+                        <form method="POST" style="display: inline-flex; align-items: center;">
+        
+                            <!-- ======================= INÍCIO DA CORREÇÃO ======================= -->
+                            
+                            <!-- ESTA LINHA ESTAVA FALTANDO -->
+                            <input type="hidden" name="acao" value="alterar_status">
+                            
+                            <!-- ======================== FIM DA CORREÇÃO ========================= -->
+
                             <!-- Campos escondidos para enviar os dados do usuário -->
                             <input type="hidden" name="cpf" value="{{ usuario.cpf }}">
                             <input type="hidden" name="status_atual" value="{{ usuario.status }}">
@@ -103,6 +126,15 @@
                             {% else %}
                                 <button type="submit" class="btn-acao btn-ativar">Ativar</button>
                             {% endif %}
+                        </form>
+
+                        <form method="POST" style="display: inline-flex; margin-left: 10px;">
+                            <input type="hidden" name="acao" value="excluir">
+                            <input type="hidden" name="cpf" value="{{ usuario.cpf }}">
+                            <button type="submit" class="btn-acao btn-excluir" 
+                                    onclick="return confirm('Tem certeza que deseja EXCLUIR este usuário permanentemente? Esta ação não pode ser desfeita.');">
+                                Excluir
+                            </button>
                         </form>
                     </td>
                 </tr>

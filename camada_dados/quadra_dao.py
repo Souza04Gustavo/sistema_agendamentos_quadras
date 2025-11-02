@@ -102,3 +102,93 @@ class QuadraDAO:
             cursor.close()
             conexao.close()
         return sucesso
+    
+    
+    def criar_quadra(self, id_ginasio, num_quadra, capacidade, tipo_piso, cobertura):
+        """
+        Insere uma nova quadra no banco de dados.
+        Retorna True em caso de sucesso, False em caso de falha.
+        """
+        conexao = conectar_banco()
+        if not conexao:
+            return False
+            
+        cursor = conexao.cursor()
+        sucesso = False
+        try:
+            # O status padrão ao criar sempre será 'disponivel'
+            query = """
+                INSERT INTO quadra (id_ginasio, num_quadra, capacidade, tipo_piso, cobertura, status)
+                VALUES (%s, %s, %s, %s, %s, 'disponivel')
+            """
+            # O valor de 'cobertura' vem como 'on' do checkbox, convertemos para booleano
+            cobertura_bool = True if cobertura else False
+            
+            cursor.execute(query, (id_ginasio, num_quadra, capacidade, tipo_piso, cobertura_bool))
+            conexao.commit()
+            sucesso = True
+            print(f"DEBUG[DAO]: Nova quadra {num_quadra} criada no ginásio {id_ginasio}.")
+        except Exception as e:
+            conexao.rollback()
+            print(f"Erro ao criar a quadra: {e}")
+        finally:
+            cursor.close()
+            conexao.close()
+        return sucesso
+    
+    def buscar_esportes_da_quadra(self, id_ginasio, num_quadra):
+        """
+        Busca todos os IDs de esportes associados a uma quadra específica.
+        Retorna uma lista de IDs.
+        """
+        conexao = conectar_banco()
+        if not conexao: return []
+        cursor = conexao.cursor()
+        ids_esportes = []
+        try:
+            query = "SELECT id_esporte FROM quadra_esporte WHERE id_ginasio = %s AND num_quadra = %s"
+            cursor.execute(query, (id_ginasio, num_quadra))
+            # fetchall() retorna uma lista de tuplas, ex: [(1,), (3,)]. Precisamos extrair o primeiro item de cada tupla.
+            resultados = cursor.fetchall()
+            ids_esportes = [item[0] for item in resultados]
+        except Exception as e:
+            print(f"Erro ao buscar esportes da quadra: {e}")
+        finally:
+            cursor.close()
+            conexao.close()
+        return ids_esportes
+
+    def atualizar_esportes_da_quadra(self, id_ginasio, num_quadra, lista_ids_esportes):
+        """
+        Atualiza a lista de esportes de uma quadra.
+        Esta operação é transacional: primeiro apaga todas as associações antigas
+        e depois insere as novas.
+        """
+        conexao = conectar_banco()
+        if not conexao: return False
+        cursor = conexao.cursor()
+        try:
+            # 1. Apaga todas as associações existentes para esta quadra
+            cursor.execute("DELETE FROM quadra_esporte WHERE id_ginasio = %s AND num_quadra = %s", (id_ginasio, num_quadra))
+
+            # 2. Se a nova lista não estiver vazia, insere as novas associações
+            if lista_ids_esportes:
+                # Prepara os dados para uma inserção em massa (mais eficiente)
+                dados_para_inserir = [(id_ginasio, num_quadra, id_esporte) for id_esporte in lista_ids_esportes]
+                query_insert = "INSERT INTO quadra_esporte (id_ginasio, num_quadra, id_esporte) VALUES (%s, %s, %s)"
+                # psycopg2 pode executar a mesma query para uma lista de tuplas
+                cursor.executemany(query_insert, dados_para_inserir)
+            
+            conexao.commit()
+            print(f"DEBUG[DAO]: Associações de esportes para a quadra {num_quadra} (Gin. {id_ginasio}) atualizadas.")
+            return True
+        except Exception as e:
+            conexao.rollback()
+            print(f"Erro ao atualizar esportes da quadra: {e}")
+            return False
+        finally:
+            cursor.close()
+            conexao.close()
+            
+            
+        

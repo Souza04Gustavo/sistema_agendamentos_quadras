@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
@@ -17,6 +16,22 @@
             color: #333;
         }
 
+        /* ======================= INÍCIO DA ALTERAÇÃO (CSS) ======================= */
+        
+        .pagina-container {
+            text-align: center; /* Centraliza o título e o container de login */
+        }
+        
+        .titulo-sistema {
+            font-size: 2.5rem; /* Tamanho maior para o título principal */
+            color: white;
+            font-weight: 600;
+            margin-bottom: 30px;
+            text-shadow: 0 2px 4px rgba(0, 0, 0, 0.2); /* Sombra para dar profundidade */
+        }
+        
+        /* ======================== FIM DA ALTERAÇÃO (CSS) ========================= */
+
         .login-container {
             background-color: #fff;
             padding: 40px;
@@ -24,9 +39,12 @@
             box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
             width: 350px;
             text-align: center;
+            /* Adicionado para que o text-align do .pagina-container não afete o conteúdo interno */
+            display: inline-block; 
         }
 
-        h2 {
+        .login-container h2 {
+            margin-top: 0; /* Remove a margem superior do 'Login' */
             margin-bottom: 20px;
             color: #0057b8;
         }
@@ -82,21 +100,29 @@
     </style>
 </head>
 <body>
-    <div class="login-container">
-        <h2>Login</h2>
+    <!-- ======================= INÍCIO DA ALTERAÇÃO (HTML) ======================= -->
+    
+    <div class="pagina-container">
+        <h1 class="titulo-sistema">Sistema de Agendamento de Quadras</h1>
+    
+    <!-- ======================== FIM DA ALTERAÇÃO (HTML) ========================= -->
 
-        {% if mensagem %}
-            <div class="mensagem-erro">{{ mensagem }}</div>
-        {% endif %}
+        <div class="login-container">
+            <h2>Login</h2>
 
-        <form method="POST" action="/login">
-            <input type="text" name="email" placeholder="Email" required>
-            <input type="password" name="senha" placeholder="Senha" required>
-            <button type="submit">Entrar</button>
-        </form>
+            {% if mensagem %}
+                <div class="mensagem-erro">{{ mensagem }}</div>
+            {% endif %}
 
-        <div class="cadastro-link">
-            Não tem uma conta? <a href="/cadastrar_aluno">Cadastre-se</a>
+            <form method="POST" action="/login">
+                <input type="text" name="email" placeholder="Email" required>
+                <input type="password" name="senha" placeholder="Senha" required>
+                <button type="submit">Entrar</button>
+            </form>
+
+            <div class="cadastro-link">
+                Não tem uma conta? <a href="/cadastrar_aluno">Cadastre-se</a>
+            </div>
         </div>
     </div>
 </body>

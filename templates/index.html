@@ -46,6 +46,12 @@
             {% if usuario.tipo == 'admin' %}
                 <a href="{{ url_for('admin_gerenciar_quadras') }}" class="botao">🏟️ Gerenciar Quadras</a>
                 <a href="{{ url_for('admin_gerenciar_usuarios') }}" class="botao">👥 Gerenciar Usuários</a>
+                <a href="{{ url_for('admin_gerenciar_materiais') }}" class="botao">🏸 Gerenciar Materiais</a>
+                <a href="{{ url_for('admin_gerenciar_ginasios') }}" class="botao">🏛️ Gerenciar Ginásios</a>
+                <a href="{{ url_for('admin_ver_agendamentos') }}" class="botao">🗓️ Ver Agendamentos</a>
+                <a href="{{ url_for('admin_gerenciar_chamados') }}" class="botao">🔧 Gerenciar Chamados</a>
+                <a href="{{ url_for('admin_gerenciar_esportes') }}" class="botao">⚽ Gerenciar Esportes</a>
+                <a href="{{ url_for('admin_gerenciar_eventos') }}" class="botao">🎉 Gerenciar Eventos</a>
             {% endif %}
         </div>
     {% else %}

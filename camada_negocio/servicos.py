@@ -2,6 +2,13 @@
 # camada_negocio/servicos.py
 from camada_dados.usuario_dao import UsuarioDAO
 from camada_dados.quadra_dao import QuadraDAO
+from modelos.usuario import Usuario, Aluno, Servidor, Funcionario, Admin
+from camada_dados.material_dao import MaterialDAO
+from camada_dados.ginasio_dao import GinasioDAO
+from camada_dados.agendamento_dao import AgendamentoDAO
+from camada_dados.chamado_dao import ChamadoDAO
+from camada_dados.esporte_dao import EsporteDAO
+from camada_dados.evento_dao import EventoDAO
 
 class ServicoCadastro:
     '''
@@ -52,11 +59,16 @@ class ServicoLogin:
             print("DEBUG[Serviço]: Nenhum usuário foi encontrado com este email. Login negado.")
             return None # Retorna None, indicando falha
 
-
 class ServicoAdmin:
     def __init__(self):
         self.usuario_dao = UsuarioDAO()
         self.quadra_dao = QuadraDAO()
+        self.material_dao = MaterialDAO()
+        self.ginasio_dao = GinasioDAO()
+        self.agendamento_dao = AgendamentoDAO()
+        self.chamado_dao = ChamadoDAO()
+        self.esporte_dao = EsporteDAO()
+        self.evento_dao = EventoDAO()
 
     def listar_usuarios(self):
         print("DEBUG[Serviço]: Solicitando a lista de todos os usuários ao DAO.")
@@ -94,3 +106,271 @@ class ServicoAdmin:
         """
         print(f"DEBUG[Serviço]: Removendo quadra {num_quadra} do Ginásio {id_ginasio}.")
         return self.quadra_dao.excluir_quadra(id_ginasio, num_quadra)
+    
+    def adicionar_nova_quadra(self, id_ginasio, num_quadra, capacidade, tipo_piso, cobertura):
+        """
+        Repassa a solicitação de criação de uma nova quadra para o DAO.
+        """
+        print(f"DEBUG[Serviço]: Adicionando nova quadra {num_quadra} ao Ginásio {id_ginasio}.")
+        return self.quadra_dao.criar_quadra(id_ginasio, num_quadra, capacidade, tipo_piso, cobertura)
+    
+    def remover_usuario(self, cpf):
+        """
+        Repassa a solicitação de exclusão de um usuário para o DAO.
+        """
+        print(f"DEBUG[Serviço]: Removendo usuário CPF {cpf}.")
+        return self.usuario_dao.excluir_usuario(cpf)
+    
+    def criar_novo_usuario(self, dados_formulario):
+        """
+        Cria o objeto de usuário correto com base nos dados do formulário
+        e o envia para o DAO para ser salvo.
+        Retorna True em caso de sucesso, False em caso de falha.
+        """
+        tipo_usuario = dados_formulario.get('tipo_usuario')
+        print(f"DEBUG[Serviço]: Tentando criar um novo usuário do tipo '{tipo_usuario}'.")
+
+        novo_usuario = None
+        try:
+            # Dados comuns a todos os usuários
+            dados_comuns = {
+                'cpf': dados_formulario.get('cpf'),
+                'nome': dados_formulario.get('nome'),
+                'email': dados_formulario.get('email'),
+                'senha': dados_formulario.get('senha'),
+                'data_nasc': dados_formulario.get('data_nasc'),
+                'status': 'ativo' # Novos usuários sempre começam como ativos
+            }
+
+            if tipo_usuario == 'aluno':
+                novo_usuario = Aluno(
+                    **dados_comuns,
+                    matricula=dados_formulario.get('matricula'),
+                    curso=dados_formulario.get('curso'),
+                    ano_inicio=dados_formulario.get('ano_inicio')
+                )
+            
+            # ATENÇÃO: A lógica para bolsista é uma extensão de aluno
+            elif tipo_usuario == 'bolsista':
+                novo_usuario = Aluno(
+                    **dados_comuns,
+                    matricula=dados_formulario.get('matricula'),
+                    curso=dados_formulario.get('curso'),
+                    ano_inicio=dados_formulario.get('ano_inicio'),
+                    # Campos específicos de bolsista
+                    categoria='bolsista',
+                    valor_remuneracao=dados_formulario.get('valor_remuneracao'),
+                    carga_horaria=dados_formulario.get('carga_horaria'),
+                    # ======================= INÍCIO DA ALTERAÇÃO =======================
+                    horario_inicio=dados_formulario.get('horario_inicio'),
+                    horario_fim=dados_formulario.get('horario_fim'),
+                    id_supervisor_servidor=dados_formulario.get('id_supervisor_servidor')
+                    # ======================== FIM DA ALTERAÇÃO =========================
+                )
+            
+            elif tipo_usuario == 'funcionario':
+                novo_usuario = Funcionario(
+                    **dados_comuns,
+                    id_servidor=dados_formulario.get('id_servidor'),
+                    data_admissao=dados_formulario.get('data_admissao'),
+                    departamento=dados_formulario.get('departamento'),
+                    cargo=dados_formulario.get('cargo')
+                )
+
+            elif tipo_usuario == 'admin':
+                novo_usuario = Admin(
+                    **dados_comuns,
+                    id_servidor=dados_formulario.get('id_servidor'),
+                    data_admissao=dados_formulario.get('data_admissao'),
+                    nivel_acesso=dados_formulario.get('nivel_acesso', 1), # Usa 1 como padrão
+                    area_responsabilidade=dados_formulario.get('area_responsabilidade')
+                )
+
+            else:
+                print(f"Erro[Serviço]: Tipo de usuário '{tipo_usuario}' desconhecido.")
+                return False
+
+            # Se um objeto foi criado com sucesso, chama o DAO para salvá-lo
+            if novo_usuario:
+                return self.usuario_dao.salvar(novo_usuario)
+
+        except Exception as e:
+            print(f"Erro[Serviço]: Falha ao instanciar o objeto de usuário. Detalhes: {e}")
+            return False
+            
+        return False
+    
+    def listar_materiais(self):
+        """
+        Busca e retorna a lista de todos os materiais esportivos.
+        """
+        print("DEBUG[Serviço]: Solicitando a lista de todos os materiais ao DAO.")
+        return self.material_dao.buscar_todos()
+
+    def adicionar_material(self, id_ginasio, nome, descricao, marca, status, qnt_total):
+        """
+        Repassa a solicitação de criação de um novo material para o DAO.
+        """
+        print(f"DEBUG[Serviço]: Adicionando novo material '{nome}'.")
+        return self.material_dao.criar(id_ginasio, nome, descricao, marca, status, qnt_total)
+
+    def atualizar_material(self, id_material, nome, descricao, marca, status, qnt_total, qnt_disponivel):
+        """
+        Repassa a solicitação de atualização de um material para o DAO.
+        """
+        print(f"DEBUG[Serviço]: Atualizando dados do material ID {id_material}.")
+        # Aqui poderiam entrar regras de negócio, como:
+        # if int(qnt_disponivel) > int(qnt_total):
+        #     return False  # Não permitir que a quantidade disponível seja maior que a total
+        return self.material_dao.atualizar(id_material, nome, descricao, marca, status, qnt_total, qnt_disponivel)
+
+    def remover_material(self, id_material):
+        """
+        Repassa a solicitação de exclusão de um material para o DAO.
+        """
+        print(f"DEBUG[Serviço]: Removendo material ID {id_material}.")
+        return self.material_dao.excluir(id_material)
+    
+    def listar_ginasios(self):
+        """Busca e retorna a lista de todos os ginásios."""
+        print("DEBUG[Serviço]: Solicitando a lista de todos os ginásios ao DAO.")
+        return self.ginasio_dao.buscar_todos()
+
+    def buscar_ginasio_por_id(self, id_ginasio):
+        """Busca um ginásio específico por seu ID."""
+        print(f"DEBUG[Serviço]: Buscando ginásio com ID {id_ginasio}.")
+        return self.ginasio_dao.buscar_por_id(id_ginasio)
+
+    def adicionar_ginasio(self, nome, endereco, capacidade):
+        """Repassa a solicitação de criação de um novo ginásio para o DAO."""
+        print(f"DEBUG[Serviço]: Adicionando novo ginásio '{nome}'.")
+        return self.ginasio_dao.criar(nome, endereco, capacidade)
+
+    def atualizar_ginasio(self, id_ginasio, nome, endereco, capacidade):
+        """Repassa a solicitação de atualização de um ginásio para o DAO."""
+        print(f"DEBUG[Serviço]: Atualizando dados do ginásio ID {id_ginasio}.")
+        return self.ginasio_dao.atualizar(id_ginasio, nome, endereco, capacidade)
+
+    def remover_ginasio(self, id_ginasio):
+        """Repassa a solicitação de exclusão de um ginásio para o DAO."""
+        print(f"DEBUG[Serviço]: Removendo ginásio ID {id_ginasio}.")
+        return self.ginasio_dao.excluir(id_ginasio)
+    
+    def listar_todos_agendamentos(self):
+        """
+        Busca e retorna a lista de todos os agendamentos do sistema.
+        """
+        print("DEBUG[Serviço]: Solicitando a lista de todos os agendamentos ao DAO.")
+        return self.agendamento_dao.buscar_todos_os_agendamentos()
+
+    def cancelar_agendamento_admin(self, id_agendamento):
+        """
+        Cancela um agendamento específico em nome de um administrador.
+        """
+        print(f"DEBUG[Serviço]: Admin cancelando o agendamento ID {id_agendamento}.")
+        # A regra de negócio aqui é que o admin sempre muda o status para 'cancelado'.
+        novo_status = 'cancelado'
+        return self.agendamento_dao.admin_atualizar_status(id_agendamento, novo_status)
+    
+    def listar_chamados_manutencao(self):
+        """
+        Busca e retorna a lista de todos os chamados de manutenção abertos.
+        """
+        print("DEBUG[Serviço]: Solicitando a lista de todos os chamados ao DAO.")
+        return self.chamado_dao.buscar_todos()
+
+    def resolver_chamado_manutencao(self, id_chamado):
+        """
+        Resolve um chamado de manutenção, excluindo-o da lista de pendências.
+        """
+        print(f"DEBUG[Serviço]: Resolvendo (excluindo) o chamado ID {id_chamado}.")
+        return self.chamado_dao.excluir(id_chamado)
+    
+    def listar_esportes(self):
+        """Busca e retorna a lista de todos os esportes."""
+        print("DEBUG[Serviço]: Solicitando a lista de todos os esportes ao DAO.")
+        return self.esporte_dao.buscar_todos()
+
+    def buscar_esporte_por_id(self, id_esporte):
+        """Busca um esporte específico por seu ID."""
+        print(f"DEBUG[Serviço]: Buscando esporte com ID {id_esporte}.")
+        return self.esporte_dao.buscar_por_id(id_esporte)
+
+    def adicionar_esporte(self, nome, max_jogadores):
+        """Repassa a solicitação de criação de um novo esporte para o DAO."""
+        print(f"DEBUG[Serviço]: Adicionando novo esporte '{nome}'.")
+        return self.esporte_dao.criar(nome, max_jogadores)
+
+    def atualizar_esporte(self, id_esporte, nome, max_jogadores):
+        """Repassa a solicitação de atualização de um esporte para o DAO."""
+        print(f"DEBUG[Serviço]: Atualizando dados do esporte ID {id_esporte}.")
+        return self.esporte_dao.atualizar(id_esporte, nome, max_jogadores)
+
+    def remover_esporte(self, id_esporte):
+        """Repassa a solicitação de exclusão de um esporte para o DAO."""
+        print(f"DEBUG[Serviço]: Removendo esporte ID {id_esporte}.")
+        return self.esporte_dao.excluir(id_esporte)
+    
+    def buscar_dados_para_associacao(self, id_ginasio, num_quadra):
+        """
+        Busca todos os dados necessários para a página de associação:
+        - A lista de TODOS os esportes disponíveis no sistema.
+        - A lista dos IDs de esportes que JÁ ESTÃO associados a esta quadra.
+        Retorna um dicionário contendo ambas as listas.
+        """
+        print(f"DEBUG[Serviço]: Buscando dados para associar esportes à quadra {num_quadra} (Gin. {id_ginasio}).")
+        
+        # Busca todos os esportes que existem (usando o EsporteDAO)
+        todos_os_esportes = self.esporte_dao.buscar_todos()
+        
+        # Busca os IDs dos esportes que já estão marcados para esta quadra (usando o QuadraDAO)
+        esportes_ja_associados = self.quadra_dao.buscar_esportes_da_quadra(id_ginasio, num_quadra)
+        
+        return {
+            'todos_esportes': todos_os_esportes,
+            'esportes_associados_ids': esportes_ja_associados
+        }
+
+    def salvar_associacao_esportes_quadra(self, id_ginasio, num_quadra, lista_ids_esportes):
+        """
+        Repassa a lista de IDs de esportes selecionados para o QuadraDAO atualizar
+        as associações no banco de dados.
+        """
+        print(f"DEBUG[Serviço]: Salvando associações de esportes para a quadra {num_quadra} (Gin. {id_ginasio}).")
+        return self.quadra_dao.atualizar_esportes_da_quadra(id_ginasio, num_quadra, lista_ids_esportes)
+    
+    def listar_eventos(self):
+        """Busca e retorna a lista de todos os eventos."""
+        print("DEBUG[Serviço]: Solicitando a lista de todos os eventos ao DAO.")
+        return self.evento_dao.buscar_todos()
+
+    def adicionar_evento(self, cpf_admin_organizador, nome_evento, desc_evento, tipo_evento, dados_tempo, lista_quadras_str):
+        """
+        Processa os dados recebidos da rota e os envia para o DAO.
+        """
+        print(f"DEBUG[Serviço]: Adicionando novo evento do tipo '{tipo_evento}'.")
+        
+        # Processa a lista de quadras (a única lógica que permanece aqui)
+        lista_quadras_ids = []
+        if lista_quadras_str:
+            for quadra_str in lista_quadras_str:
+                partes = quadra_str.split('-')
+                if len(partes) == 2:
+                    lista_quadras_ids.append((int(partes[0]), int(partes[1])))
+        
+        # Chama o DAO com os dados organizados
+        return self.evento_dao.criar(
+            cpf_admin_organizador,
+            nome_evento,
+            desc_evento,
+            tipo_evento,
+            dados_tempo,
+            lista_quadras_ids
+        )
+
+    def remover_evento(self, id_evento):
+        """Repassa a solicitação de exclusão de um evento para o DAO."""
+        print(f"DEBUG[Serviço]: Removendo evento ID {id_evento}.")
+        return self.evento_dao.excluir(id_evento)
+    
+    

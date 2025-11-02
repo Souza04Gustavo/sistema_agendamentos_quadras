@@ -10,6 +10,8 @@ from camada_dados.agendamento_dao import buscar_agendamentos_por_quadra # Novo
 from camada_dados.agendamento_dao import buscar_quadras_por_ginasio # Novo
 from camada_dados.agendamento_dao import buscar_ginasios # Novo
 from camada_dados.agendamento_dao import get_ginasio_por_id # Novo
+from camada_dados.agendamento_dao import buscar_ginasios
+
 
 app = Flask(__name__)
 app.secret_key = 'chave_muito_segura'
@@ -33,7 +35,6 @@ def index():
         print("DEBUG: Usuário não está na sessão. Redirecionando para /login.")
         flash('Por favor, faça o login para acessar o sistema.', 'info')
         return redirect(url_for('login'))
-    
     
 @app.route('/login', methods=['GET', 'POST'])
 def login():
@@ -85,11 +86,10 @@ def cadastrar_aluno():
         matricula = request.form['matricula']
         curso = request.form['curso']
 
-
+        # Define o ano de início como o ano atual
         ano_inicio = datetime.now().year
 
-
-        # Cria o objeto Aluno (garanta que sua classe Aluno aceita esses parâmetros)
+        # Cria o objeto Aluno
         aluno = Aluno(
             cpf=cpf,
             nome=nome,
@@ -99,7 +99,7 @@ def cadastrar_aluno():
             status='ativo',
             matricula=matricula,
             curso=curso,
-            ano_inicio=ano_inicio,
+            ano_inicio=ano_inicio
         )
 
         # Salva no banco
@@ -107,12 +107,15 @@ def cadastrar_aluno():
         sucesso = dao.salvar(aluno)
 
         if sucesso:
-            flash("Aluno cadastrado com sucesso!", "success")
-            return redirect(url_for('cadastrar_aluno'))
+            flash("Aluno cadastrado com sucesso! Agora você pode fazer o login.", "success")
+            # Redireciona para a página de login após o cadastro bem-sucedido
+            return redirect(url_for('login'))
         else:
-            flash("Erro ao cadastrar aluno.", "danger")
+            flash("Erro ao cadastrar aluno. Verifique se o CPF ou Email já estão em uso.", "error")
+            # Em caso de erro, permanece na página de cadastro para correção
+            return redirect(url_for('cadastrar_aluno'))
 
-    # Se for GET, apenas exibe o formulário
+    # Se a requisição for GET, apenas exibe o formulário de cadastro
     return render_template('cadastrar_aluno.html')
 
 @app.route("/meus_agendamentos")
@@ -197,40 +200,62 @@ def admin_gerenciar_usuarios():
         flash('Acesso negado. Apenas administradores podem ver esta página.', 'error')
         return redirect(url_for('index'))
 
-    # Lógica para o método POST (quando o admin clica em "Ativar/Desativar")
+    # Lógica para o método POST (quando uma ação é enviada)
     if request.method == 'POST':
-        # Coleta os dados enviados pelo formulário do botão
-        cpf_usuario = request.form['cpf']
-        status_atual = request.form['status_atual']
+        # Primeiro, descobrimos qual ação foi enviada pelo formulário
+        acao = request.form.get('acao')
+        cpf_usuario = request.form.get('cpf')
+
+        print(f"DEBUG[Rota]: Ação recebida: '{acao}' para o CPF: {cpf_usuario}")
+
+        if acao == 'alterar_status':
+            status_atual = request.form.get('status_atual')
+            sucesso = servico_admin.alterar_status_usuario(cpf_usuario, status_atual)
+            if sucesso:
+                flash('Status do usuário alterado com sucesso!', 'success')
+            else:
+                flash('Ocorreu um erro ao alterar o status do usuário.', 'error')
         
-        print(f"DEBUG[Rota]: Recebida requisição POST para alterar status do CPF: {cpf_usuario}")
+        elif acao == 'excluir':
+            sucesso = servico_admin.remover_usuario(cpf_usuario)
+            if sucesso:
+                flash('Usuário excluído com sucesso!', 'success')
+            else:
+                flash('Erro ao excluir o usuário.', 'error')
         
-        # Chama o serviço para executar a ação
-        sucesso = servico_admin.alterar_status_usuario(cpf_usuario, status_atual)
-        
-        if sucesso:
-            flash('Status do usuário alterado com sucesso!', 'success')
         else:
-            flash('Ocorreu um erro ao alterar o status do usuário.', 'error')
+            # É aqui que sua mensagem de erro estava sendo gerada
+            flash('Ação desconhecida.', 'error')
         
-        # Redireciona de volta para a mesma página para recarregar a lista
         return redirect(url_for('admin_gerenciar_usuarios'))
 
-    # Lógica para o método GET (quando a página é carregada pela primeira vez)
+    # Lógica para o método GET (carregar a página)
     print("DEBUG[Rota]: Carregando a lista de usuários para a página de gerenciamento.")
     lista_de_usuarios = servico_admin.listar_usuarios()
     
-    # Renderiza o template, passando a lista de usuários para ele
     return render_template('admin_gerenciar_usuarios.html', usuarios=lista_de_usuarios)
 
-@app.route('/admin/agendamentos')
+
+@app.route('/admin/agendamentos', methods=['GET', 'POST'])
 def admin_ver_agendamentos():
     # Proteção da rota
     if session.get('usuario_logado', {}).get('tipo') != 'admin':
         flash('Acesso negado.', 'error')
         return redirect(url_for('index'))
-        
-    return "<h1>Página de Visualização de Todos Agendamentos (Admin) - Em construção</h1>"
+
+    # Lógica POST para cancelamento
+    if request.method == 'POST':
+        id_agendamento = request.form.get('id_agendamento')
+        sucesso = servico_admin.cancelar_agendamento_admin(id_agendamento)
+        if sucesso:
+            flash(f'Agendamento ID {id_agendamento} cancelado com sucesso!', 'success')
+        else:
+            flash('Erro ao cancelar o agendamento.', 'error')
+        return redirect(url_for('admin_ver_agendamentos'))
+
+    # Lógica GET para listar todos os agendamentos
+    lista_de_agendamentos = servico_admin.listar_todos_agendamentos()
+    return render_template('admin_ver_agendamentos.html', agendamentos=lista_de_agendamentos)
 
 @app.route('/admin/quadras', methods=['GET', 'POST'])
 def admin_gerenciar_quadras():
@@ -272,6 +297,383 @@ def admin_gerenciar_quadras():
     return render_template('admin_gerenciar_quadras.html', 
                            quadras=lista_de_quadras, 
                            status_possiveis=status_possiveis)
+
+@app.route('/admin/quadras/nova', methods=['GET', 'POST'])
+def admin_adicionar_quadra():
+    # Proteção da rota
+    if session.get('usuario_logado', {}).get('tipo') != 'admin':
+        flash('Acesso negado.', 'error')
+        return redirect(url_for('index'))
+
+    if request.method == 'POST':
+        id_ginasio = request.form['id_ginasio']
+        num_quadra = request.form['num_quadra']
+        capacidade = request.form['capacidade']
+        tipo_piso = request.form['tipo_piso']
+        cobertura = request.form.get('cobertura') # .get() retorna None se o checkbox não for marcado
+        
+        sucesso = servico_admin.adicionar_nova_quadra(id_ginasio, num_quadra, capacidade, tipo_piso, cobertura)
+        
+        if sucesso:
+            flash('Nova quadra adicionada com sucesso!', 'success')
+            return redirect(url_for('admin_gerenciar_quadras'))
+        else:
+            flash('Erro ao adicionar a quadra. Verifique se o número da quadra já existe para este ginásio.', 'error')
+            # Fica na mesma página para o usuário corrigir
+            return redirect(url_for('admin_adicionar_quadra'))
+
+    # Lógica GET: buscar ginásios para o formulário
+    lista_de_ginasios = buscar_ginasios()
+    return render_template('admin_adicionar_quadra.html', ginasios=lista_de_ginasios)
+
+@app.route('/admin/usuarios/novo', methods=['GET', 'POST'])
+def admin_adicionar_usuario():
+    # Proteção da rota
+    if session.get('usuario_logado', {}).get('tipo') != 'admin':
+        flash('Acesso negado.', 'error')
+        return redirect(url_for('index'))
+    
+    if request.method == 'POST':
+        # request.form é um dicionário com todos os dados do formulário
+        dados_do_formulario = request.form.to_dict()
+        
+        # Passa o dicionário inteiro para a camada de serviço
+        sucesso = servico_admin.criar_novo_usuario(dados_do_formulario)
+        
+        if sucesso:
+            flash('Novo usuário criado com sucesso!', 'success')
+            return redirect(url_for('admin_gerenciar_usuarios'))
+        else:
+            flash('Erro ao criar usuário. Verifique se o CPF ou Email já existem.', 'error')
+            # Permanece na página de criação para correção
+            return redirect(url_for('admin_adicionar_usuario'))
+
+    dao = UsuarioDAO()
+    lista_de_supervisores = dao.buscar_todos_os_servidores()
+    
+    # Renderiza o template, passando a lista de supervisores
+    return render_template('admin_adicionar_usuario.html', supervisores=lista_de_supervisores)
+
+@app.route('/admin/materiais', methods=['GET', 'POST'])
+def admin_gerenciar_materiais():
+    # Proteção da rota
+    if session.get('usuario_logado', {}).get('tipo') != 'admin':
+        flash('Acesso negado.', 'error')
+        return redirect(url_for('index'))
+
+    # Lógica para o método POST (apenas para EXCLUSÃO)
+    if request.method == 'POST':
+        id_material = request.form.get('id_material')
+        acao = request.form.get('acao')
+
+        if acao == 'excluir':
+            sucesso = servico_admin.remover_material(id_material)
+            if sucesso:
+                flash('Material esportivo excluído com sucesso!', 'success')
+            else:
+                flash('Erro ao excluir o material. Ele pode estar em uso em um agendamento.', 'error')
+        
+        return redirect(url_for('admin_gerenciar_materiais'))
+
+    # Lógica para o método GET (carregar a página)
+    lista_de_materiais = servico_admin.listar_materiais()
+    
+    return render_template('admin_gerenciar_materiais.html', materiais=lista_de_materiais)
+
+@app.route('/admin/materiais/form', defaults={'id_material': None}, methods=['GET', 'POST'])
+@app.route('/admin/materiais/form/<int:id_material>', methods=['GET', 'POST'])
+def admin_form_material(id_material):
+    # Proteção da rota
+    if session.get('usuario_logado', {}).get('tipo') != 'admin':
+        flash('Acesso negado.', 'error')
+        return redirect(url_for('index'))
+    
+    # Busca dados necessários para o formulário
+    lista_de_ginasios = buscar_ginasios()
+    status_possiveis = ['bom', 'danificado', 'manutencao']
+    material_existente = None
+    
+    # Se um ID foi passado, estamos no modo de EDIÇÃO
+    if id_material:
+        # Busca o material específico para preencher o formulário
+        todos_materiais = servico_admin.listar_materiais()
+        material_existente = next((m for m in todos_materiais if m['id_material'] == id_material), None)
+
+    # Lógica para o método POST (salvar dados do formulário)
+    if request.method == 'POST':
+        # Coleta os dados do formulário
+        id_ginasio = request.form.get('id_ginasio')
+        nome = request.form.get('nome')
+        descricao = request.form.get('descricao')
+        marca = request.form.get('marca')
+        status = request.form.get('status')
+        qnt_total = request.form.get('qnt_total')
+
+        # Se estamos editando, chamamos o serviço de atualização
+        if id_material:
+            qnt_disponivel = request.form.get('qnt_disponivel')
+            sucesso = servico_admin.atualizar_material(id_material, nome, descricao, marca, status, qnt_total, qnt_disponivel)
+            if sucesso:
+                flash('Material atualizado com sucesso!', 'success')
+            else:
+                flash('Erro ao atualizar o material.', 'error')
+        # Se não, chamamos o serviço de criação
+        else:
+            sucesso = servico_admin.adicionar_material(id_ginasio, nome, descricao, marca, status, qnt_total)
+            if sucesso:
+                flash('Novo material adicionado com sucesso!', 'success')
+            else:
+                flash('Erro ao adicionar o material.', 'error')
+
+        return redirect(url_for('admin_gerenciar_materiais'))
+
+    # Lógica para o método GET (exibir o formulário)
+    return render_template('admin_form_material.html', 
+                           ginasios=lista_de_ginasios,
+                           status_possiveis=status_possiveis,
+                           material=material_existente)
+
+@app.route('/admin/ginasios', methods=['GET', 'POST'])
+def admin_gerenciar_ginasios():
+    # Proteção da rota
+    if session.get('usuario_logado', {}).get('tipo') != 'admin':
+        flash('Acesso negado.', 'error')
+        return redirect(url_for('index'))
+
+    # Lógica POST para exclusão
+    if request.method == 'POST':
+        id_ginasio = request.form.get('id_ginasio')
+        sucesso = servico_admin.remover_ginasio(id_ginasio)
+        if sucesso:
+            flash('Ginásio excluído com sucesso! Todas as quadras e agendamentos associados foram removidos.', 'success')
+        else:
+            flash('Erro ao excluir o ginásio.', 'error')
+        return redirect(url_for('admin_gerenciar_ginasios'))
+
+    # Lógica GET para listar
+    lista_de_ginasios = servico_admin.listar_ginasios()
+    return render_template('admin_gerenciar_ginasios.html', ginasios=lista_de_ginasios)
+
+
+@app.route('/admin/ginasios/form', defaults={'id_ginasio': None}, methods=['GET', 'POST'])
+@app.route('/admin/ginasios/form/<int:id_ginasio>', methods=['GET', 'POST'])
+def admin_form_ginasio(id_ginasio):
+    # Proteção da rota
+    if session.get('usuario_logado', {}).get('tipo') != 'admin':
+        flash('Acesso negado.', 'error')
+        return redirect(url_for('index'))
+    
+    ginasio_existente = None
+    if id_ginasio:
+        ginasio_existente = servico_admin.buscar_ginasio_por_id(id_ginasio)
+
+    # Lógica POST para salvar (criar ou atualizar)
+    if request.method == 'POST':
+        nome = request.form.get('nome')
+        endereco = request.form.get('endereco')
+        capacidade = request.form.get('capacidade')
+
+        if id_ginasio: # Modo de edição
+            sucesso = servico_admin.atualizar_ginasio(id_ginasio, nome, endereco, capacidade)
+            if sucesso:
+                flash('Ginásio atualizado com sucesso!', 'success')
+            else:
+                flash('Erro ao atualizar o ginásio.', 'error')
+        else: # Modo de criação
+            sucesso = servico_admin.adicionar_ginasio(nome, endereco, capacidade)
+            if sucesso:
+                flash('Novo ginásio adicionado com sucesso!', 'success')
+            else:
+                flash('Erro ao adicionar o ginásio.', 'error')
+        
+        return redirect(url_for('admin_gerenciar_ginasios'))
+
+    # Lógica GET para exibir o formulário
+    return render_template('admin_form_ginasio.html', ginasio=ginasio_existente)
+
+
+@app.route('/admin/chamados', methods=['GET', 'POST'])
+def admin_gerenciar_chamados():
+    # Proteção da rota
+    if session.get('usuario_logado', {}).get('tipo') != 'admin':
+        flash('Acesso negado.', 'error')
+        return redirect(url_for('index'))
+
+    # Lógica POST para "resolver" (excluir) um chamado
+    if request.method == 'POST':
+        id_chamado = request.form.get('id_chamado')
+        sucesso = servico_admin.resolver_chamado_manutencao(id_chamado)
+        if sucesso:
+            flash('Chamado de manutenção resolvido com sucesso!', 'success')
+        else:
+            flash('Erro ao processar o chamado.', 'error')
+        return redirect(url_for('admin_gerenciar_chamados'))
+
+    # Lógica GET para listar todos os chamados
+    lista_de_chamados = servico_admin.listar_chamados_manutencao()
+    return render_template('admin_gerenciar_chamados.html', chamados=lista_de_chamados)
+
+
+@app.route('/admin/esportes', methods=['GET', 'POST'])
+def admin_gerenciar_esportes():
+    # Proteção da rota
+    if session.get('usuario_logado', {}).get('tipo') != 'admin':
+        flash('Acesso negado.', 'error')
+        return redirect(url_for('index'))
+
+    # Lógica POST para exclusão
+    if request.method == 'POST':
+        id_esporte = request.form.get('id_esporte')
+        sucesso = servico_admin.remover_esporte(id_esporte)
+        if sucesso:
+            flash('Esporte excluído com sucesso!', 'success')
+        else:
+            flash('Erro ao excluir o esporte. Ele pode estar associado a uma quadra.', 'error')
+        return redirect(url_for('admin_gerenciar_esportes'))
+
+    # Lógica GET para listar
+    lista_de_esportes = servico_admin.listar_esportes()
+    return render_template('admin_gerenciar_esportes.html', esportes=lista_de_esportes)
+
+
+@app.route('/admin/esportes/form', defaults={'id_esporte': None}, methods=['GET', 'POST'])
+@app.route('/admin/esportes/form/<int:id_esporte>', methods=['GET', 'POST'])
+def admin_form_esporte(id_esporte):
+    # Proteção da rota
+    if session.get('usuario_logado', {}).get('tipo') != 'admin':
+        flash('Acesso negado.', 'error')
+        return redirect(url_for('index'))
+    
+    esporte_existente = None
+    if id_esporte:
+        esporte_existente = servico_admin.buscar_esporte_por_id(id_esporte)
+
+    # Lógica POST para salvar (criar ou atualizar)
+    if request.method == 'POST':
+        nome = request.form.get('nome')
+        max_jogadores = request.form.get('max_jogadores')
+
+        if id_esporte: # Modo de edição
+            sucesso = servico_admin.atualizar_esporte(id_esporte, nome, max_jogadores)
+            if sucesso:
+                flash('Esporte atualizado com sucesso!', 'success')
+            else:
+                flash('Erro ao atualizar o esporte.', 'error')
+        else: # Modo de criação
+            sucesso = servico_admin.adicionar_esporte(nome, max_jogadores)
+            if sucesso:
+                flash('Novo esporte adicionado com sucesso!', 'success')
+            else:
+                flash('Erro ao adicionar o esporte.', 'error')
+        
+        return redirect(url_for('admin_gerenciar_esportes'))
+
+    # Lógica GET para exibir o formulário
+    return render_template('admin_form_esporte.html', esporte=esporte_existente)
+
+
+@app.route('/admin/quadras/associar_esportes/<int:id_ginasio>/<int:num_quadra>', methods=['GET', 'POST'])
+def admin_associar_esportes(id_ginasio, num_quadra):
+    # Proteção da rota
+    if session.get('usuario_logado', {}).get('tipo') != 'admin':
+        flash('Acesso negado.', 'error')
+        return redirect(url_for('index'))
+
+    # Lógica POST para salvar as associações
+    if request.method == 'POST':
+        # request.form.getlist('esportes_selecionados') pega todos os valores de checkboxes com o mesmo nome
+        ids_dos_esportes_selecionados = request.form.getlist('esportes_selecionados')
+        
+        # Converte a lista de strings para uma lista de inteiros
+        ids_dos_esportes_selecionados = [int(id) for id in ids_dos_esportes_selecionados]
+        
+        sucesso = servico_admin.salvar_associacao_esportes_quadra(id_ginasio, num_quadra, ids_dos_esportes_selecionados)
+        
+        if sucesso:
+            flash('Esportes associados à quadra atualizados com sucesso!', 'success')
+        else:
+            flash('Erro ao atualizar as associações de esportes.', 'error')
+        
+        return redirect(url_for('admin_gerenciar_quadras'))
+
+    # Lógica GET para exibir a página
+    # Busca os dados necessários: a lista de todos os esportes e os que já estão marcados
+    dados_para_pagina = servico_admin.buscar_dados_para_associacao(id_ginasio, num_quadra)
+    
+    # Busca informações da quadra para exibir no título da página
+    quadra_info = servico_admin.listar_quadras_para_gerenciar() # Reutiliza o método existente
+    quadra_especifica = next((q for q in quadra_info if q['id_ginasio'] == id_ginasio and q['num_quadra'] == num_quadra), None)
+    
+    return render_template('admin_associar_esportes.html',
+                           quadra=quadra_especifica,
+                           todos_esportes=dados_para_pagina['todos_esportes'],
+                           esportes_associados_ids=dados_para_pagina['esportes_associados_ids'])
+
+@app.route('/admin/eventos', methods=['GET', 'POST'])
+def admin_gerenciar_eventos():
+    # Proteção da rota
+    if session.get('usuario_logado', {}).get('tipo') != 'admin':
+        flash('Acesso negado.', 'error')
+        return redirect(url_for('index'))
+
+    # Lógica POST para exclusão
+    if request.method == 'POST':
+        id_evento = request.form.get('id_evento')
+        sucesso = servico_admin.remover_evento(id_evento)
+        if sucesso:
+            flash('Evento excluído com sucesso!', 'success')
+        else:
+            flash('Erro ao excluir o evento.', 'error')
+        return redirect(url_for('admin_gerenciar_eventos'))
+
+    # Lógica GET para listar
+    lista_de_eventos = servico_admin.listar_eventos()
+    return render_template('admin_gerenciar_eventos.html', eventos=lista_de_eventos)
+
+
+@app.route('/admin/eventos/novo', methods=['GET', 'POST'])
+def admin_form_evento():
+    # Proteção da rota
+    if session.get('usuario_logado', {}).get('tipo') != 'admin':
+        flash('Acesso negado.', 'error')
+        return redirect(url_for('index'))
+    
+    if request.method == 'POST':
+        # Extrai todos os dados diretamente do request.form
+        cpf_admin_organizador = request.form.get('cpf_admin_organizador')
+        nome_evento = request.form.get('nome')
+        desc_evento = request.form.get('descricao')
+        tipo_evento = request.form.get('tipo_evento')
+        lista_quadras = request.form.getlist('quadras_selecionadas')
+        
+        dados_tempo = {}
+        if tipo_evento == 'extraordinario':
+            dados_tempo['inicio'] = request.form.get('data_hora_inicio')
+            dados_tempo['fim'] = request.form.get('data_hora_fim')
+        elif tipo_evento == 'recorrente':
+            dados_tempo['regra'] = request.form.get('regra_recorrencia')
+            dados_tempo['data_fim'] = request.form.get('data_fim_recorrencia')
+
+        # Chama o serviço passando os dados já processados
+        sucesso = servico_admin.adicionar_evento(
+            cpf_admin_organizador, nome_evento, desc_evento, tipo_evento, dados_tempo, lista_quadras
+        )
+        
+        if sucesso:
+            flash('Novo evento criado com sucesso!', 'success')
+        else:
+            flash('Erro ao criar o evento. Verifique os dados e tente novamente.', 'error')
+        
+        return redirect(url_for('admin_gerenciar_eventos'))
+
+    # Lógica GET para exibir o formulário (permanece a mesma)
+    todas_as_quadras = servico_admin.listar_quadras_para_gerenciar()
+    todos_os_usuarios = servico_admin.listar_usuarios()
+    lista_de_admins = [u for u in todos_os_usuarios if u['tipo'] == 'Admin']
+    
+    return render_template('admin_form_evento.html', 
+                           quadras=todas_as_quadras,
+                           admins=lista_de_admins)
 
 if __name__ == "__main__":
     app.run(debug=True)
