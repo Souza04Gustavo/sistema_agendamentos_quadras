@@ -1,7 +1,7 @@
 
 # Sistema de Agendamento de Quadras Esportivas
 
-## 📖 Sobre o Projeto
+## Sobre o Projeto
 
 Este projeto é uma aplicação web desenvolvida como trabalho final para a disciplina de **Banco de Dados II** do curso de Ciência da Computação da UDESC. O sistema tem como objetivo gerenciar o agendamento de quadras esportivas, o controle de usuários, recursos e eventos em um ambiente universitário.
 
@@ -13,7 +13,7 @@ A arquitetura do sistema segue o padrão de **3 camadas**, separando claramente 
 
 ---
 
-## ✨ Funcionalidades
+## Funcionalidades
 
 O sistema possui dois níveis de acesso principais: **Usuário Padrão (Aluno)** e **Administrador**.
 
@@ -48,7 +48,7 @@ O administrador tem acesso a um painel completo para gerenciar todo o ecossistem
 
 ---
 
-## 💻 Tecnologias Utilizadas
+## Tecnologias Utilizadas
 
 - **Backend:** Python 3
 - **Framework Web:** Flask
@@ -58,7 +58,7 @@ O administrador tem acesso a um painel completo para gerenciar todo o ecossistem
 
 ---
 
-## 📁 Estrutura do Projeto
+## Estrutura do Projeto
 
 O projeto está organizado da seguinte forma para refletir a arquitetura em camadas:
 
@@ -103,7 +103,7 @@ sistema_agendamentos_quadras/
 
 ---
 
-## 🚀 Como Executar o Projeto
+## Como Executar o Projeto
 
 Siga os passos abaixo para configurar e executar o projeto em seu ambiente local.
 
@@ -158,7 +158,7 @@ Siga os passos abaixo para configurar e executar o projeto em seu ambiente local
 
 ---
 
-## 👥 Autores
+## Autores
 
 Este projeto foi desenvolvido por:
 *   Gustavo de Souza
