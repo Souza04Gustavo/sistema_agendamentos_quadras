@@ -9,6 +9,7 @@ from camada_dados.agendamento_dao import buscar_quadras_por_ginasio
 from camada_dados.agendamento_dao import buscar_ginasios
 from camada_dados.agendamento_dao import get_ginasio_por_id
 from camada_dados.agendamento_dao import verificar_disponibilidade, criar_agendamento, verificar_usuario_existe
+from camada_dados.db_config import conectar_banco
 
 import os # Para a secret_key
 
@@ -1022,11 +1023,10 @@ def bolsista_agendamentos():
         flash('Acesso restrito a bolsistas.', 'error')
         return redirect(url_for('index'))
     
-    from camada_dados.agendamento_dao import AgendamentoDAO
+    usuario_info = session.get('usuario_logado', {})
     
-    # Criar instância do DAO e usar o método
-    dao = AgendamentoDAO()
-    agendamentos = dao.buscar_todos_os_agendamentos()
+    # Buscar todos os agendamentos do bolsista
+    agendamentos = servico_bolsista.buscar_todos_agendamentos_bolsista(usuario_info['cpf'])
     
     # Separar agendamentos por status
     agendamentos_ativos = [a for a in agendamentos if a['status_agendamento'] == 'confirmado']
@@ -1043,29 +1043,48 @@ def bolsista_cancelar_agendamento(id_agendamento):
     """
     Rota para bolsistas cancelarem agendamentos.
     """
+    print(f"DEBUG[ROTA BOLSISTA]: Cancelando agendamento {id_agendamento}")
+    
     if 'usuario_logado' not in session or not session['usuario_logado'].get('eh_bolsista'):
         flash('Acesso restrito a bolsistas.', 'error')
         return redirect(url_for('index'))
     
-    # Use a função existente de cancelamento
-    from camada_dados.agendamento_dao import atualizar_status_agendamento, buscar_agendamento_por_id
+    usuario_info = session.get('usuario_logado', {})
     
-    # Verificar se o agendamento existe
-    agendamento = buscar_agendamento_por_id(id_agendamento)
-    if not agendamento:
-        flash('Agendamento não encontrado.', 'error')
-        return redirect(url_for('bolsista_agendamentos'))
-    
-    # Usar a função existente para cancelar
-    sucesso = atualizar_status_agendamento(id_agendamento, 'cancelado')
+    # Usar o serviço para cancelar
+    sucesso = servico_bolsista.cancelar_agendamento_bolsista(id_agendamento, usuario_info['cpf'])
     
     if sucesso:
         flash(f'Agendamento #{id_agendamento} cancelado com sucesso!', 'success')
+        print(f"DEBUG[ROTA BOLSISTA]: Cancelamento bem-sucedido para agendamento {id_agendamento}")
     else:
         flash('Erro ao cancelar agendamento.', 'error')
+        print(f"DEBUG[ROTA BOLSISTA]: Falha no cancelamento para agendamento {id_agendamento}")
+    
+    # Forçar um refresh da página para garantir que os dados atualizados sejam buscados
+    return redirect(url_for('bolsista_agendamentos', _t=int(datetime.now().timestamp())))
+
+@app.route('/bolsista/concluir_agendamento/<int:id_agendamento>', methods=['POST'])
+def bolsista_concluir_agendamento(id_agendamento):
+    """
+    Rota para bolsistas marcarem agendamentos como concluídos.
+    """
+    if 'usuario_logado' not in session or not session['usuario_logado'].get('eh_bolsista'):
+        flash('Acesso restrito a bolsistas.', 'error')
+        return redirect(url_for('index'))
+    
+    usuario_info = session.get('usuario_logado', {})
+    
+    # Usar o serviço para marcar como concluído
+    sucesso = servico_bolsista.marcar_como_concluido(id_agendamento, usuario_info['cpf'])
+    
+    if sucesso:
+        flash(f'Agendamento #{id_agendamento} marcado como concluído com sucesso!', 'success')
+    else:
+        flash('Erro ao marcar agendamento como concluído.', 'error')
     
     return redirect(url_for('bolsista_agendamentos'))
-    
+
 @app.route('/teste_agendamento')
 def teste_agendamento():
     from camada_dados.agendamento_dao import criar_agendamento, verificar_disponibilidade, verificar_estrutura_tabela
@@ -1151,6 +1170,26 @@ def teste_form_bolsista():
     </body>
     </html>
     '''
+# Chamar esta função temporariamente na rota de bolsista para debug
+@app.route('/bolsista/debug_estrutura')
+def bolsista_debug_estrutura():
+    if 'usuario_logado' not in session or not session['usuario_logado'].get('eh_bolsista'):
+        return "Acesso negado"
+    
+    from camada_dados.agendamento_dao import verificar_estrutura_agendamento
+    verificar_estrutura_agendamento()
+    
+    # Também verificar alguns agendamentos de exemplo
+    conexao = conectar_banco()
+    cursor = conexao.cursor()
+    cursor.execute("SELECT id_agendamento, cpf_usuario, id_bolsista_operador, status_agendamento FROM agendamento LIMIT 5")
+    exemplos = cursor.fetchall()
+    cursor.close()
+    conexao.close()
+    
+    print(f"DEBUG: Exemplos de agendamentos: {exemplos}")
+    
+    return f"Estrutura verificada. Ver console. Exemplos: {exemplos}"
 
 if __name__ == "__main__":
     app.run(debug=True)
