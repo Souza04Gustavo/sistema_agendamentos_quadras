@@ -1,19 +1,78 @@
+<!-- Modificação no tabela_agendamento.html - adicionar seção de materiais -->
+
 {% extends "layout.html" %}
 
 {% block titulo %}Agendamento - Quadra{% endblock %}
 
 {% block conteudo %}
 <h2 style="text-align: center; color: var(--cor-principal); margin-bottom: 20px;">
-    Passo 3: Tabela de Horários
+    Passo 3: Tabela de Horários - {{ nome_ginasio }}
 </h2>
 
-<!-- A tabela simples, como na versão original que você gostou -->
+<!-- 🆕 NOVA SEÇÃO: MATERIAIS DISPONÍVEIS -->
+<div style="margin-bottom: 30px; padding: 20px; background: #f8f9fa; border-radius: 8px; border-left: 4px solid var(--cor-principal);">
+    <h3 style="color: var(--cor-principal); margin-top: 0;">
+        🏐 Materiais Esportivos Disponíveis
+    </h3>
+    
+    {% if materiais_disponiveis %}
+        <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 15px;">
+            {% for material in materiais_disponiveis %}
+            <div style="background: white; padding: 15px; border-radius: 6px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 8px;">
+                    <h4 style="margin: 0; color: #333;">{{ material.nome }}</h4>
+                    <span style="background: #28a745; color: white; padding: 2px 8px; border-radius: 12px; font-size: 0.8em; font-weight: bold;">
+                        {{ material.qnt_disponivel }} disponível{{ 's' if material.qnt_disponivel > 1 }}
+                    </span>
+                </div>
+                
+                {% if material.descricao %}
+                <p style="margin: 5px 0; color: #666; font-size: 0.9em;">{{ material.descricao }}</p>
+                {% endif %}
+                
+                {% if material.marca %}
+                <p style="margin: 5px 0; color: #888; font-size: 0.85em;">
+                    <strong>Marca:</strong> {{ material.marca }}
+                </p>
+                {% endif %}
+                
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 10px;">
+                    <span style="background: #17a2b8; color: white; padding: 2px 8px; border-radius: 12px; font-size: 0.8em;">
+                        Status: {{ material.status }}
+                    </span>
+                    <small style="color: #6c757d;">Total: {{ material.qnt_total }}</small>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    {% else %}
+        <div style="text-align: center; padding: 20px; color: #6c757d;">
+            <p style="margin: 0;">📭 Nenhum material disponível neste ginásio no momento.</p>
+            <small>Entre em contato com a administração para mais informações.</small>
+        </div>
+    {% endif %}
+</div>
+
+<!-- Navegação entre semanas -->
+<div style="text-align: center; margin-bottom: 20px;">
+    <a href="{{ url_for('tabela_agendamento', ginasio_id=ginasio_id, quadra_id=quadra_id, semana=semana_offset-1) }}" 
+       class="btn-semana">← Semana Anterior</a>
+    
+    <span style="margin: 0 15px; font-weight: bold;">
+        Semana {{ semana_offset + 1 }}
+    </span>
+    
+    <a href="{{ url_for('tabela_agendamento', ginasio_id=ginasio_id, quadra_id=quadra_id, semana=semana_offset+1) }}" 
+       class="btn-semana">Próxima Semana →</a>
+</div>
+
+<!-- Resto do código permanece igual -->
 <table border="1" style="width: 100%; border-collapse: collapse; background-color: white;">
     <thead>
         <tr style="background-color: #f2f2f2;">
             <th style="padding: 8px;">Horário</th>
             {% for dia in dias %}
-                <th style="padding: 8px;">{{ dia.strftime("%A") }}<br><small>{{ dia.strftime("%d/%m") }}</small></th>
+                <th style="padding: 8px;">{{ dia.strftime("%a") }}<br><small>{{ dia.strftime("%d/%m") }}</small></th>
             {% endfor %}
         </tr>
     </thead>
@@ -22,24 +81,125 @@
         <tr>
             <td style="padding: 8px; text-align: center; font-weight: bold;">{{ hora }}</td>
             {% for dia in dias %}
-                {% set ag = agendamentos_por_dia[dia.date()][hora] %}
+                {% set ag = agendamentos_por_dia[dia][hora] %}
                 
-                {# A lógica original que você preferiu #}
                 {% if ag %}
                     <td style="background-color: lightblue; text-align: center; padding: 8px;">Ocupado</td>
                 {% else %}
-                    <td style="padding: 8px;"></td>
+                    <td style="padding: 8px; text-align: center;">
+                        <form action="{{ url_for('fazer_agendamento') }}" method="post" style="margin: 0;">
+                            <input type="hidden" name="id_ginasio" value="{{ ginasio_id }}">
+                            <input type="hidden" name="num_quadra" value="{{ quadra_id }}">
+                            <input type="hidden" name="data" value="{{ dia.strftime('%Y-%m-%d') }}">
+                            <input type="hidden" name="hora_ini" value="{{ hora }}">
+                            <input type="hidden" name="hora_fim" value="{{ '%02d:00'|format(hora[:2]|int + 1) }}">
+                            
+                            <button type="submit" 
+                                    style="background: var(--cor-principal); 
+                                        color: white; 
+                                        border: none; 
+                                        padding: 5px 10px; 
+                                        border-radius: 4px; 
+                                        cursor: pointer;">
+                                Reservar
+                            </button>
+                        </form>
+                    </td>
                 {% endif %}
-
             {% endfor %}
         </tr>
         {% endfor %}
     </tbody>
 </table>
 
+<!-- Campo para reservar para outra pessoa (apenas para bolsistas) -->
+{% if session.get('usuario_logado') and session.usuario_logado.eh_bolsista %}
+<div style="margin-top: 30px; padding: 20px; background: #f9f9f9; border-radius: 8px;">
+    <h3>🔄 Reservar para outra pessoa</h3>
+    <form action="{{ url_for('fazer_agendamento_outra_pessoa') }}" method="post">
+        <input type="hidden" name="id_ginasio" value="{{ ginasio_id }}">
+        <input type="hidden" name="num_quadra" value="{{ quadra_id }}">
+        
+        <div style="display: grid; grid-template-columns: 1fr 1fr 1fr 1fr 1fr; gap: 10px; align-items: end;">
+            <div>
+                <label><strong>CPF do Usuário:</strong></label>
+                <input type="text" name="cpf_usuario" required 
+                       placeholder="000.000.000-00"
+                       style="width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px;">
+            </div>
+            <div>
+                <label><strong>Data:</strong></label>
+                <input type="date" name="data" required 
+                       min="{{ dias[0].strftime('%Y-%m-%d') }}" 
+                       max="{{ dias[-1].strftime('%Y-%m-%d') }}"
+                       style="width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px;">
+            </div>
+            <div>
+                <label><strong>Hora Início:</strong></label>
+                <select name="hora_ini" required style="width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px;">
+                    <option value="">Selecione</option>
+                    {% for hora in horarios %}
+                    <option value="{{ hora }}">{{ hora }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div>
+                <label><strong>Hora Fim:</strong></label>
+                <select name="hora_fim" required style="width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px;">
+                    <option value="">Selecione</option>
+                    {% for hora in horarios %}
+                    <option value="{{ hora }}">{{ hora }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div>
+                <button type="submit" 
+                        style="background: #28a745; 
+                               color: white; 
+                               border: none; 
+                               padding: 12px 20px; 
+                               border-radius: 4px; 
+                               cursor: pointer;
+                               font-weight: bold;">
+                    ✅ Reservar para Outra Pessoa
+                </button>
+            </div>
+        </div>
+    </form>
+</div>
+{% endif %}
 <br>
 
 <a href="{{ url_for('selecionar_quadra', ginasio_id=ginasio_id) }}" style="text-decoration: none; font-weight: bold; color: var(--cor-principal);">
     ← Voltar para a seleção de quadras
 </a>
+
+<style>
+.btn-semana {
+    display: inline-block;
+    padding: 8px 15px;
+    background-color: var(--cor-principal);
+    color: white;
+    text-decoration: none;
+    border-radius: 5px;
+    font-weight: bold;
+}
+
+.btn-semana:hover {
+    background-color: var(--cor-secundaria);
+}
+
+/* 🆕 Estilos para a seção de materiais */
+.material-card {
+    background: white;
+    padding: 15px;
+    border-radius: 6px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    transition: transform 0.2s;
+}
+
+.material-card:hover {
+    transform: translateY(-2px);
+}
+</style>
 {% endblock %}

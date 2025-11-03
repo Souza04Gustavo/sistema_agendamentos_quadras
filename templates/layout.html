@@ -177,6 +177,15 @@
             <a href="{{ url_for('admin_gerenciar_esportes') }}">Gerenciar Esportes</a>
             <a href="{{ url_for('admin_gerenciar_eventos') }}">Gerenciar Eventos</a>
         {% endif %}
+
+        {% if session.get('usuario_logado', {}).get('eh_bolsista') %}
+            <hr style="border-color: rgba(255,255,255,0.2);">
+            <h3>Painel Bolsista</h3>
+            <a href="{{ url_for('painel_bolsista') }}">📋 Painel do Bolsista</a>
+            <a href="{{ url_for('bolsista_novo_agendamento') }}">👥 Agendar para Terceiros</a>
+            <a href="{{ url_for('bolsista_relatorios') }}">📊 Relatórios</a>
+            <a href="{{ url_for('bolsista_agendamentos') }}">👨‍💼 Gerenciar agendamentos</a>
+        {% endif %}
         <a href="{{ url_for('logout') }}">Sair</a>
     </div>
 

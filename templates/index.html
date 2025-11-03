@@ -39,10 +39,21 @@
     {% if usuario %}
         <h2>Bem-vindo(a), {{ usuario.nome }}!</h2>
         <p>Você está logado como <strong>{{ usuario.tipo }}</strong>.</p>
+        
+        {% if usuario.eh_bolsista %}
+            <p><strong>🎓 Você é um bolsista</strong> - Acesso a funcionalidades especiais</p>
+        {% endif %}
 
         <div class="botoes">
             <a href="{{ url_for('meus_agendamentos') }}" class="botao">📋 Meus Agendamentos</a>
             <a href="{{ url_for('novo_agendamento') }}" class="botao">🕒 Novo Agendamento</a>
+            
+            {% if usuario.eh_bolsista %}
+                <a href="{{ url_for('painel_bolsista') }}" class="botao">🎓 Painel Bolsista</a>
+                <a href="{{ url_for('bolsista_relatorios') }}" class="botao">📊 Relatórios</a>
+                <a href="{{ url_for('bolsista_agendamentos') }}"class="botao">👨‍💼 Gerenciar agendamentos</a>
+            {% endif %}
+            
             {% if usuario.tipo == 'admin' %}
                 <a href="{{ url_for('admin_gerenciar_quadras') }}" class="botao">🏟️ Gerenciar Quadras</a>
                 <a href="{{ url_for('admin_gerenciar_usuarios') }}" class="botao">👥 Gerenciar Usuários</a>
