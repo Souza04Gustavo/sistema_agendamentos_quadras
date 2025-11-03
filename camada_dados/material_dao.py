@@ -129,3 +129,41 @@ class MaterialDAO:
             cursor.close()
             conexao.close()
         return sucesso
+    
+    # No camada_dados/material_dao.py - adicionar este método
+
+    def buscar_por_ginasio(self, id_ginasio):
+        """
+        Busca todos os materiais disponíveis em um ginásio específico.
+        Retorna apenas materiais com status 'bom' e quantidade disponível > 0.
+        """
+        conexao = conectar_banco()
+        if not conexao:
+            return []
+            
+        cursor = conexao.cursor(cursor_factory=psycopg2.extras.DictCursor)
+        materiais = []
+        
+        try:
+            query = """
+                SELECT id_material, nome, descricao, marca, status, 
+                    qnt_total, qnt_disponivel
+                FROM material_esportivo 
+                WHERE id_ginasio = %s 
+                AND status = 'bom' 
+                AND qnt_disponivel > 0
+                ORDER BY nome
+            """
+            cursor.execute(query, (id_ginasio,))
+            resultados = cursor.fetchall()
+            
+            for linha in resultados:
+                materiais.append(dict(linha))
+                
+        except Exception as e:
+            print(f"Erro ao buscar materiais por ginásio: {e}")
+        finally:
+            cursor.close()
+            conexao.close()
+            
+        return materiais

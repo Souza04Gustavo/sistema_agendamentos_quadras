@@ -240,20 +240,35 @@ def buscar_quadras_por_ginasio(id_ginasio):
 # ==========================================================
 #  BUSCAR AGENDAMENTOS DE UMA QUADRA
 # ==========================================================
-def buscar_agendamentos_por_quadra(num_quadra, data_solicitacao, hora_ini):
-    conexao = conectar_banco()
-    cursor = conexao.cursor()
-    query = """
-        SELECT * 
-        FROM agendamento
-        WHERE num_quadra = %s AND data_solicitacao BETWEEN %s AND %s
-        ORDER BY data_solicitacao, hora_ini
+def buscar_agendamentos_por_quadra(id_ginasio, num_quadra, data):
     """
-    cursor.execute(query, (num_quadra, data_solicitacao, hora_ini))
-    resultados = cursor.fetchall()
-    cursor.close()
-    return resultados
-
+    Busca agendamentos para uma quadra específica em uma data.
+    """
+    conexao = conectar_banco()
+    if not conexao:
+        return []
+        
+    cursor = conexao.cursor(cursor_factory=psycopg2.extras.DictCursor)
+    agendamentos = []
+    try:
+        query = """
+            SELECT * 
+            FROM agendamento
+            WHERE id_ginasio = %s AND num_quadra = %s 
+            AND DATE(hora_ini) = %s
+            AND status_agendamento != 'cancelado'
+            ORDER BY hora_ini
+        """
+        cursor.execute(query, (id_ginasio, num_quadra, data))
+        resultados = cursor.fetchall()
+        for row in resultados:
+            agendamentos.append(dict(row))
+    except Exception as e:
+        print(f"Erro ao buscar agendamentos por quadra: {e}")
+    finally:
+        cursor.close()
+        conexao.close()
+    return agendamentos
 
 # ==========================================================
 #  INSERIR NOVO AGENDAMENTO
@@ -314,3 +329,323 @@ def excluir_agendamento(agendamento_id):
     cursor.close()
     conexao.close()
     return True
+
+# ==========================================================
+#  BUSCAR AGENDAMENTO POR ID
+# ==========================================================
+def buscar_agendamento_por_id(id_agendamento):
+    """
+    Busca um agendamento específico pelo ID.
+    Retorna um dicionário com os dados do agendamento ou None se não encontrado.
+    """
+    conexao = conectar_banco()
+    if not conexao:
+        return None
+        
+    cursor = conexao.cursor(cursor_factory=psycopg2.extras.DictCursor)
+    try:
+        query = """
+            SELECT 
+                a.id_agendamento,
+                a.cpf_usuario,
+                a.id_ginasio,
+                a.num_quadra,
+                a.data_solicitacao,
+                a.hora_ini,
+                a.hora_fim,
+                a.status_agendamento,
+                u.nome AS nome_usuario,
+                g.nome AS nome_ginasio
+            FROM 
+                agendamento a
+            JOIN 
+                usuario u ON a.cpf_usuario = u.cpf
+            JOIN 
+                ginasio g ON a.id_ginasio = g.id_ginasio
+            WHERE 
+                a.id_agendamento = %s
+        """
+        cursor.execute(query, (id_agendamento,))
+        resultado = cursor.fetchone()
+        
+        if resultado:
+            agendamento = dict(resultado)
+            print(f"DEBUG: Agendamento ID {id_agendamento} encontrado")
+            return agendamento
+        else:
+            print(f"DEBUG: Agendamento ID {id_agendamento} não encontrado")
+            return None
+            
+    except Exception as e:
+        print(f"Erro ao buscar agendamento por ID: {e}")
+        return None
+    finally:
+        cursor.close()
+        conexao.close()
+
+# Adicione estas funções ao agendamento_dao.py
+
+def verificar_disponibilidade(id_ginasio, num_quadra, data, hora_ini, hora_fim):
+    """
+    Verifica se a quadra está disponível no horário solicitado.
+    """
+    conexao = conectar_banco()
+    if not conexao:
+        return False
+        
+    cursor = conexao.cursor()
+    try:
+        # Converter para timestamp completo
+        timestamp_ini = f"{data} {hora_ini}:00"
+        timestamp_fim = f"{data} {hora_fim}:00"
+        
+        query = """
+            SELECT COUNT(*) FROM agendamento 
+            WHERE id_ginasio = %s 
+            AND num_quadra = %s 
+            AND status_agendamento != 'cancelado'
+            AND (
+                (hora_ini < %s AND hora_fim > %s) OR
+                (hora_ini < %s AND hora_fim > %s) OR
+                (hora_ini >= %s AND hora_fim <= %s)
+            )
+        """
+        cursor.execute(query, (
+            id_ginasio, num_quadra,
+            timestamp_fim, timestamp_ini,
+            timestamp_ini, timestamp_fim,
+            timestamp_ini, timestamp_fim
+        ))
+        conflitos = cursor.fetchone()[0]
+        print(f"DEBUG: Conflitos de horário encontrados: {conflitos}")
+        
+        return conflitos == 0
+        
+    except Exception as e:
+        print(f"Erro ao verificar disponibilidade: {e}")
+        return False
+    finally:
+        cursor.close()
+        conexao.close()
+
+
+'''
+
+def criar_agendamento(cpf_usuario, id_ginasio, num_quadra, data, hora_ini, hora_fim):
+    """
+    Cria um novo agendamento no banco de dados.
+    """
+    conexao = conectar_banco()
+    if not conexao:
+        print("DEBUG: Falha na conexão com o banco")
+        return False
+        
+    cursor = conexao.cursor()
+    try:
+        # Converter para timestamp completo
+        timestamp_ini = f"{data} {hora_ini}:00"
+        timestamp_fim = f"{data} {hora_fim}:00"
+        
+        print(f"DEBUG - Timestamps: INI={timestamp_ini}, FIM={timestamp_fim}")
+        
+        query = """
+            INSERT INTO agendamento 
+            (cpf_usuario, id_ginasio, num_quadra, data_solicitacao, hora_ini, hora_fim, status_agendamento)
+            VALUES (%s, %s, %s, CURRENT_DATE, %s, %s, 'confirmado')
+        """
+        cursor.execute(query, (cpf_usuario, id_ginasio, num_quadra, timestamp_ini, timestamp_fim))
+        conexao.commit()
+        
+        print(f"DEBUG: Agendamento inserido - Linhas afetadas: {cursor.rowcount}")
+        
+        if cursor.rowcount > 0:
+            print("DEBUG: Agendamento criado com SUCESSO no banco")
+            return True
+        else:
+            print("DEBUG: Nenhuma linha afetada - agendamento NÃO criado")
+            return False
+            
+    except Exception as e:
+        print(f"DEBUG: Erro ao criar agendamento: {e}")
+        conexao.rollback()
+        return False
+    finally:
+        cursor.close()
+        conexao.close()
+
+
+def criar_agendamento(cpf_usuario, id_ginasio, num_quadra, data, hora_ini, hora_fim):
+    """
+    Cria um novo agendamento no banco de dados.
+    """
+    conexao = conectar_banco()
+    if not conexao:
+        return False
+        
+    cursor = conexao.cursor()
+    try:
+        # Converter para timestamp completo
+        # Se data é '2024-01-15' e hora_ini é '10:00', fica '2024-01-15 10:00:00'
+        timestamp_ini = f"{data} {hora_ini}:00"
+        timestamp_fim = f"{data} {hora_fim}:00"
+        
+        query = """
+            INSERT INTO agendamento 
+            (cpf_usuario, id_ginasio, num_quadra, data_solicitacao, hora_ini, hora_fim, status_agendamento)
+            VALUES (%s, %s, %s, CURRENT_DATE, %s, %s, 'confirmado')
+        """
+        cursor.execute(query, (cpf_usuario, id_ginasio, num_quadra, timestamp_ini, timestamp_fim))
+        conexao.commit()
+        print(f"DEBUG: Agendamento inserido com sucesso!")
+        print(f"DEBUG - Timestamps: INI={timestamp_ini}, FIM={timestamp_fim}")
+        return True
+    except Exception as e:
+        print(f"Erro ao criar agendamento: {e}")
+        conexao.rollback()
+        return False
+    finally:
+        cursor.close()
+        conexao.close() '''
+
+def verificar_disponibilidade(id_ginasio, num_quadra, data, hora_ini, hora_fim):
+    """
+    Verifica se a quadra está disponível no horário solicitado.
+    """
+    conexao = conectar_banco()
+    if not conexao:
+        return False
+        
+    cursor = conexao.cursor()
+    try:
+        # Converter para timestamp completo
+        timestamp_ini = f"{data} {hora_ini}:00"
+        timestamp_fim = f"{data} {hora_fim}:00"
+        
+        query = """
+            SELECT COUNT(*) FROM agendamento 
+            WHERE id_ginasio = %s 
+            AND num_quadra = %s 
+            AND status_agendamento != 'cancelado'
+            AND (
+                (hora_ini < %s AND hora_fim > %s) OR
+                (hora_ini < %s AND hora_fim > %s)
+            )
+        """
+        cursor.execute(query, (
+            id_ginasio, num_quadra,
+            timestamp_fim, timestamp_ini,  # hora_ini < timestamp_fim AND hora_fim > timestamp_ini
+            timestamp_ini, timestamp_fim   # hora_ini < timestamp_ini AND hora_fim > timestamp_fim
+        ))
+        conflitos = cursor.fetchone()[0]
+        
+        print(f"DEBUG: Conflitos encontrados: {conflitos}")
+        return conflitos == 0
+        
+    except Exception as e:
+        print(f"Erro ao verificar disponibilidade: {e}")
+        return False
+    finally:
+        cursor.close()
+        conexao.close()
+
+def verificar_usuario_existe(cpf):
+    """
+    Verifica se um usuário existe no sistema.
+    """
+    conexao = conectar_banco()
+    if not conexao:
+        return False
+        
+    cursor = conexao.cursor()
+    try:
+        query = "SELECT COUNT(*) FROM usuario WHERE cpf = %s"
+        cursor.execute(query, (cpf,))
+        count = cursor.fetchone()[0]
+        return count > 0
+    except Exception as e:
+        print(f"Erro ao verificar usuário: {e}")
+        return False
+    finally:
+        cursor.close()
+        conexao.close()
+
+def verificar_estrutura_tabela():
+    """
+    Verifica a estrutura da tabela agendamento
+    """
+    conexao = conectar_banco()
+    if not conexao:
+        return
+        
+    cursor = conexao.cursor()
+    try:
+        query = """
+            SELECT column_name, data_type, is_nullable
+            FROM information_schema.columns 
+            WHERE table_name = 'agendamento'
+            ORDER BY ordinal_position;
+        """
+        cursor.execute(query)
+        colunas = cursor.fetchall()
+        print("=== ESTRUTURA DA TABELA AGENDAMENTO ===")
+        for coluna in colunas:
+            print(f"Coluna: {coluna[0]}, Tipo: {coluna[1]}, Nulo: {coluna[2]}")
+    except Exception as e:
+        print(f"Erro ao verificar estrutura: {e}")
+    finally:
+        cursor.close()
+        conexao.close()
+
+def criar_agendamento(cpf_usuario, id_ginasio, num_quadra, data, hora_ini, hora_fim, motivo_evento=None):
+    """
+    Cria um novo agendamento no banco de dados.
+    Se motivo_evento for fornecido, é um agendamento de evento.
+    """
+    conexao = conectar_banco()
+    if not conexao:
+        print("DEBUG: Falha na conexão com o banco")
+        return False
+        
+    cursor = conexao.cursor()
+    try:
+        # Converter para timestamp completo
+        timestamp_ini = f"{data} {hora_ini}:00"
+        timestamp_fim = f"{data} {hora_fim}:00"
+        
+        print(f"DEBUG - Timestamps: INI={timestamp_ini}, FIM={timestamp_fim}")
+        
+        if motivo_evento:
+            # Agendamento de evento - usar status confirmado e incluir motivo
+            query = """
+                INSERT INTO agendamento 
+                (cpf_usuario, id_ginasio, num_quadra, data_solicitacao, hora_ini, hora_fim, status_agendamento, motivo)
+                VALUES (%s, %s, %s, CURRENT_DATE, %s, %s, 'confirmado', %s)
+            """
+            cursor.execute(query, (cpf_usuario, id_ginasio, num_quadra, timestamp_ini, timestamp_fim, f"Evento: {motivo_evento}"))
+        else:
+            # Agendamento normal
+            query = """
+                INSERT INTO agendamento 
+                (cpf_usuario, id_ginasio, num_quadra, data_solicitacao, hora_ini, hora_fim, status_agendamento)
+                VALUES (%s, %s, %s, CURRENT_DATE, %s, %s, 'confirmado')
+            """
+            cursor.execute(query, (cpf_usuario, id_ginasio, num_quadra, timestamp_ini, timestamp_fim))
+        
+        conexao.commit()
+        
+        print(f"DEBUG: Agendamento inserido - Linhas afetadas: {cursor.rowcount}")
+        
+        if cursor.rowcount > 0:
+            print("DEBUG: Agendamento criado com SUCESSO no banco")
+            return True
+        else:
+            print("DEBUG: Nenhuma linha afetada - agendamento NÃO criado")
+            return False
+            
+    except Exception as e:
+        print(f"DEBUG: Erro ao criar agendamento: {e}")
+        conexao.rollback()
+        return False
+    finally:
+        cursor.close()
+        conexao.close()
