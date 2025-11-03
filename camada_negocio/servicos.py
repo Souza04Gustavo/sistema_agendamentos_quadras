@@ -451,6 +451,8 @@ class ServicoAdmin:
         print(f"DEBUG[Serviço]: Removendo evento ID {id_evento}.")
         return self.evento_dao.excluir(id_evento)
 
+# No servicos.py - atualizar a classe ServicoBolsista
+
 class ServicoBolsista:
     def __init__(self):
         # Reutiliza os DAOs existentes
@@ -609,8 +611,141 @@ class ServicoBolsista:
             
         return sucesso
 
+
     def cancelar_agendamento_bolsista(self, id_agendamento, cpf_bolsista):
         """Cancela um agendamento feito pelo bolsista"""
+        print(f"DEBUG[CANCELAR]: Iniciando cancelamento - Agendamento: {id_agendamento}, Bolsista: {cpf_bolsista}")
+        
+        conexao = self._conectar_banco()
+        if not conexao:
+            print("DEBUG[CANCELAR]: Falha na conexão com o banco")
+            return False
+            
+        cursor = conexao.cursor()
+        sucesso = False
+        
+        try:
+            # Primeiro, vamos verificar TODOS os agendamentos para debug
+            query_debug = "SELECT id_agendamento, cpf_usuario, status_agendamento FROM agendamento WHERE id_agendamento = %s"
+            cursor.execute(query_debug, (id_agendamento,))
+            agendamento_debug = cursor.fetchone()
+            
+            print(f"DEBUG[CANCELAR]: Resultado da busca direta: {agendamento_debug}")
+            
+            if not agendamento_debug:
+                print(f"DEBUG[CANCELAR]: Agendamento {id_agendamento} realmente não existe na tabela")
+                return False
+            
+            # Agora vamos verificar com a query original
+            query_verifica = """
+                SELECT id_agendamento, status_agendamento 
+                FROM agendamento 
+                WHERE id_agendamento = %s
+            """
+            cursor.execute(query_verifica, (id_agendamento,))
+            agendamento = cursor.fetchone()
+            
+            print(f"DEBUG[CANCELAR]: Resultado da verificação: {agendamento}")
+            
+            if agendamento:
+                print(f"DEBUG[CANCELAR]: Agendamento encontrado - ID: {agendamento[0]}, Status atual: {agendamento[1]}")
+                
+                # Atualizar o status para 'cancelado'
+                query_cancelar = """
+                    UPDATE agendamento 
+                    SET status_agendamento = 'cancelado'
+                    WHERE id_agendamento = %s
+                """
+                cursor.execute(query_cancelar, (id_agendamento,))
+                conexao.commit()
+                
+                # Verificar se realmente foi atualizado
+                cursor.execute("SELECT status_agendamento FROM agendamento WHERE id_agendamento = %s", (id_agendamento,))
+                novo_status = cursor.fetchone()
+                print(f"DEBUG[CANCELAR]: Status após atualização: {novo_status}")
+                
+                sucesso = True
+                print(f"DEBUG[CANCELAR]: Agendamento {id_agendamento} cancelado com sucesso")
+            else:
+                print(f"DEBUG[CANCELAR]: Agendamento {id_agendamento} não encontrado na verificação")
+                
+        except Exception as e:
+            conexao.rollback()
+            print(f"ERRO ao cancelar agendamento: {e}")
+            import traceback
+            traceback.print_exc()
+        finally:
+            cursor.close()
+            conexao.close()
+            
+        return sucesso
+
+# No servicos.py - método buscar_todos_agendamentos_bolsista com logs
+
+    def buscar_todos_agendamentos_bolsista(self, cpf_bolsista):
+        """Busca todos os agendamentos feitos pelo bolsista"""
+        print(f"DEBUG[ServicoBolsista]: Buscando agendamentos para bolsista CPF: {cpf_bolsista}")
+        
+        conexao = self._conectar_banco()
+        if not conexao:
+            print("DEBUG[ServicoBolsista]: Falha na conexão com o banco")
+            return []
+            
+        cursor = conexao.cursor()
+        agendamentos = []
+        
+        try:
+            query = """
+                SELECT 
+                    a.id_agendamento, a.hora_ini, a.hora_fim, a.status_agendamento,
+                    g.nome as nome_ginasio, a.num_quadra,
+                    u.nome as nome_beneficiario, u.cpf as cpf_beneficiario,
+                    a.motivo, a.data_solicitacao
+                FROM agendamento a
+                JOIN ginasio g ON a.id_ginasio = g.id_ginasio
+                JOIN usuario u ON a.cpf_usuario = u.cpf
+                ORDER BY a.hora_ini DESC
+            """
+            
+            print(f"DEBUG[ServicoBolsista]: Executando query: {query}")
+            print(f"DEBUG[ServicoBolsista]: Parâmetro: {cpf_bolsista}")
+            
+            cursor.execute(query, (cpf_bolsista,))
+            resultados = cursor.fetchall()
+            
+            print(f"DEBUG[ServicoBolsista]: {len(resultados)} agendamentos encontrados")
+            
+            for row in resultados:
+                agendamento = {
+                    'id_agendamento': row[0],
+                    'hora_ini': row[1],
+                    'hora_fim': row[2],
+                    'status_agendamento': row[3],
+                    'nome_ginasio': row[4],
+                    'num_quadra': row[5],
+                    'nome_beneficiario': row[6],
+                    'cpf_beneficiario': row[7],
+                    'motivo': row[8],
+                    'data_solicitacao': row[9]
+                }
+                print(f"DEBUG[ServicoBolsista]: Agendamento encontrado: {agendamento}")
+                agendamentos.append(agendamento)
+                
+        except Exception as e:
+            print(f"ERRO ao buscar todos os agendamentos do bolsista: {e}")
+            import traceback
+            traceback.print_exc()
+        finally:
+            cursor.close()
+            conexao.close()
+            
+        return agendamentos
+
+
+    def marcar_como_concluido(self, id_agendamento, cpf_bolsista):
+        """Marca um agendamento como concluído/realizado"""
+        print(f"DEBUG: Tentando marcar agendamento {id_agendamento} como concluído pelo bolsista {cpf_bolsista}")
+        
         conexao = self._conectar_banco()
         if not conexao:
             return False
@@ -619,21 +754,35 @@ class ServicoBolsista:
         sucesso = False
         
         try:
-            query = """
-                UPDATE agendamento 
-                SET status_agendamento = 'cancelado'
-                WHERE id_agendamento = %s AND id_bolsista_operador = %s
+            query_verifica = """
+                SELECT id_agendamento, status_agendamento 
+                FROM agendamento 
+                WHERE id_agendamento = %s
             """
+            cursor.execute(query_verifica, (id_agendamento,))
+            agendamento = cursor.fetchone()
             
-            cursor.execute(query, (id_agendamento, cpf_bolsista))
-            conexao.commit()
-            
-            if cursor.rowcount > 0:
+            if agendamento:
+                print(f"DEBUG: Agendamento encontrado - ID: {agendamento[0]}, Status atual: {agendamento[1]}")
+                
+                # Atualizar o status para 'realizado'
+                query_concluir = """
+                    UPDATE agendamento 
+                    SET status_agendamento = 'realizado'
+                    WHERE id_agendamento = %s
+                """
+                cursor.execute(query_concluir, (id_agendamento,))
+                conexao.commit()
                 sucesso = True
+                print(f"DEBUG: Agendamento {id_agendamento} marcado como realizado com sucesso")
+            else:
+                print(f"DEBUG: Agendamento {id_agendamento} não encontrado")
                 
         except Exception as e:
             conexao.rollback()
-            print(f"Erro ao cancelar agendamento: {e}")
+            print(f"ERRO ao marcar agendamento como concluído: {e}")
+            import traceback
+            traceback.print_exc()
         finally:
             cursor.close()
             conexao.close()
