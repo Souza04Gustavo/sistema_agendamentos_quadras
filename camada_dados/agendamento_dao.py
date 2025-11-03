@@ -296,20 +296,36 @@ def inserir_agendamento(usuario_id, quadra_id, data, hora_inicio, hora_fim):
 # ==========================================================
 #  ATUALIZAR STATUS DE AGENDAMENTO
 # ==========================================================
+
 def atualizar_status_agendamento(agendamento_id, novo_status):
     """
     Atualiza o status de um agendamento (por exemplo, confirmado, cancelado, rejeitado).
+    CORREÇÃO: usando id_agendamento em vez de id
     """
     conexao = conectar_banco()
+    if not conexao:
+        print("DEBUG: Falha na conexão com o banco")
+        return False
+        
     cursor = conexao.cursor()
-
-    query = "UPDATE agendamento SET status = %s WHERE id = %s;"
-    cursor.execute(query, (novo_status, agendamento_id))
-    conexao.commit()
-
-    cursor.close()
-    conexao.close()
-    return True
+    try:
+        # CORREÇÃO: usar id_agendamento em vez de id
+        query = "UPDATE agendamento SET status_agendamento = %s WHERE id_agendamento = %s;"
+        cursor.execute(query, (novo_status, agendamento_id))
+        conexao.commit()
+        
+        print(f"DEBUG: Status do agendamento {agendamento_id} atualizado para '{novo_status}'")
+        print(f"DEBUG: Linhas afetadas: {cursor.rowcount}")
+        
+        return cursor.rowcount > 0
+        
+    except Exception as e:
+        print(f"ERRO ao atualizar status do agendamento: {e}")
+        conexao.rollback()
+        return False
+    finally:
+        cursor.close()
+        conexao.close()
 
 
 # ==========================================================
@@ -333,6 +349,8 @@ def excluir_agendamento(agendamento_id):
 # ==========================================================
 #  BUSCAR AGENDAMENTO POR ID
 # ==========================================================
+# No agendamento_dao.py - verificar se já está correto
+
 def buscar_agendamento_por_id(id_agendamento):
     """
     Busca um agendamento específico pelo ID.
@@ -346,7 +364,7 @@ def buscar_agendamento_por_id(id_agendamento):
     try:
         query = """
             SELECT 
-                a.id_agendamento,
+                a.id_agendamento,  # ← Já está correto aqui
                 a.cpf_usuario,
                 a.id_ginasio,
                 a.num_quadra,
@@ -363,7 +381,7 @@ def buscar_agendamento_por_id(id_agendamento):
             JOIN 
                 ginasio g ON a.id_ginasio = g.id_ginasio
             WHERE 
-                a.id_agendamento = %s
+                a.id_agendamento = %s  # ← Já está correto aqui
         """
         cursor.execute(query, (id_agendamento,))
         resultado = cursor.fetchone()
@@ -590,6 +608,34 @@ def verificar_estrutura_tabela():
         print("=== ESTRUTURA DA TABELA AGENDAMENTO ===")
         for coluna in colunas:
             print(f"Coluna: {coluna[0]}, Tipo: {coluna[1]}, Nulo: {coluna[2]}")
+    except Exception as e:
+        print(f"Erro ao verificar estrutura: {e}")
+    finally:
+        cursor.close()
+        conexao.close()
+# Adicionar esta função no agendamento_dao.py para verificar a estrutura
+
+def verificar_estrutura_agendamento():
+    """
+    Verifica a estrutura completa da tabela agendamento
+    """
+    conexao = conectar_banco()
+    if not conexao:
+        return
+        
+    cursor = conexao.cursor()
+    try:
+        query = """
+            SELECT column_name, data_type, is_nullable, column_default
+            FROM information_schema.columns 
+            WHERE table_name = 'agendamento'
+            ORDER BY ordinal_position;
+        """
+        cursor.execute(query)
+        colunas = cursor.fetchall()
+        print("=== ESTRUTURA COMPLETA DA TABELA AGENDAMENTO ===")
+        for coluna in colunas:
+            print(f"Coluna: {coluna[0]}, Tipo: {coluna[1]}, Nulo: {coluna[2]}, Default: {coluna[3]}")
     except Exception as e:
         print(f"Erro ao verificar estrutura: {e}")
     finally:
