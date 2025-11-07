@@ -8,7 +8,9 @@ from camada_dados.agendamento_dao import AgendamentoDAO
 from camada_dados.chamado_dao import ChamadoDAO
 from camada_dados.esporte_dao import EsporteDAO
 from camada_dados.evento_dao import EventoDAO
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, time, date
+import re
+
 
 class ServicoCadastro:
     '''
@@ -349,23 +351,27 @@ class ServicoAdmin:
         print("DEBUG[Serviço]: Solicitando a lista de todos os eventos ao DAO.")
         return self.evento_dao.buscar_todos()
 
+    '''
     def adicionar_evento(self, cpf_admin_organizador, nome_evento, desc_evento, tipo_evento, dados_tempo, lista_quadras_str):
         """
         Processa os dados recebidos da rota e os envia para o DAO.
-        Cria também os agendamentos correspondentes para as quadras selecionadas.
+        A string de 'regra_recorrencia' já vem pronta da camada de apresentação.
         """
         print(f"DEBUG[Serviço]: Adicionando novo evento do tipo '{tipo_evento}'.")
         
-        # Processa a lista de quadras
+        # Processa a lista de quadras (de strings para tuplas de inteiros)
         lista_quadras_ids = []
         if lista_quadras_str:
             for quadra_str in lista_quadras_str:
                 partes = quadra_str.split('-')
                 if len(partes) == 2:
-                    lista_quadras_ids.append((int(partes[0]), int(partes[1])))
+                    try:
+                        lista_quadras_ids.append((int(partes[0]), int(partes[1])))
+                    except ValueError:
+                        print(f"Aviso[Serviço]: Valor de quadra inválido ignorado: '{quadra_str}'")
         
-        # 1. Primeiro cria o evento no banco
-        sucesso_evento = self.evento_dao.criar(
+        # Chama o DAO com todos os dados já processados
+        return self.evento_dao.criar(
             cpf_admin_organizador,
             nome_evento,
             desc_evento,
@@ -373,51 +379,185 @@ class ServicoAdmin:
             dados_tempo,
             lista_quadras_ids
         )
+    '''
+    
+    
+    
+    
+    
+    def adicionar_evento(self, cpf_admin_organizador, nome_evento, desc_evento, tipo_evento, dados_tempo, lista_quadras_str):
+        """
+        Verifica conflitos para todos os cenários antes de criar um novo evento.
+        """
+        print(f"\n--- INICIANDO PROCESSO DE CRIAÇÃO DE EVENTO ---")
+        print(f"DEBUG[Serviço]: Tentando adicionar novo evento do tipo '{tipo_evento}'.")
         
-        if not sucesso_evento:
-            return False
+        # --- ETAPA 1: Processar a lista de quadras ---
+        lista_quadras_ids = []
+        if lista_quadras_str:
+            for quadra_str in lista_quadras_str:
+                partes = quadra_str.split('-')
+                if len(partes) == 2:
+                    lista_quadras_ids.append((int(partes[0]), int(partes[1])))
         
-        # 2. Criar agendamentos para as quadras selecionadas
-        try:
-            if tipo_evento == 'extraordinario':
-                # Evento único - criar um agendamento
-                data_ini = datetime.fromisoformat(dados_tempo['inicio'].replace('T', ' '))
-                data_fim = datetime.fromisoformat(dados_tempo['fim'].replace('T', ' '))
-                
-                for id_ginasio, num_quadra in lista_quadras_ids:
-                    # Criar agendamento para o evento
-                    self._criar_agendamento_para_evento(
-                        cpf_admin_organizador, id_ginasio, num_quadra, 
-                        data_ini, data_fim, nome_evento
-                    )
+        # --- ETAPA 2: Lógica de Validação de Conflitos ---
+        
+        # CENÁRIO A: Adicionando um Evento Extraordinário
+        if tipo_evento == 'extraordinario':
+            inicio_str = dados_tempo.get('inicio')
+            fim_str = dados_tempo.get('fim')
+            if not inicio_str or not fim_str:
+                print("ERRO[Serviço]: Data de início ou fim do evento extraordinário não fornecida.")
+                return False
+
+            inicio_novo_evento = datetime.fromisoformat(inicio_str)
+            fim_novo_evento = datetime.fromisoformat(fim_str)
             
-            elif tipo_evento == 'recorrente':
-                # Evento recorrente - criar múltiplos agendamentos
-                from camada_dados.utils.recorrencia_utils import parse_regra_recorrencia
+            print(f"\n[CENÁRIO: EXTRAORDINÁRIO] Verificando conflitos de {inicio_novo_evento} a {fim_novo_evento}")
+
+            for id_ginasio, num_quadra in lista_quadras_ids:
+                print(f"\n  Verificando Quadra: {num_quadra} (Ginásio: {id_ginasio})")
                 
-                datas, hora = parse_regra_recorrencia(
-                    dados_tempo['regra'], 
-                    dados_tempo['data_fim']
-                )
+                # 2.1 - Verifica contra agendamentos e outros eventos extraordinários
+                if self.agendamento_dao.verificar_conflito_de_horario(id_ginasio, num_quadra, inicio_novo_evento, fim_novo_evento):
+                    print(f"    [X] CONFLITO ENCONTRADO (Agendamento ou Evento Extraordinário).")
+                    return False
+                print(f"    [✓] Sem conflitos com agendamentos ou eventos extraordinários.")
+
+                # 2.2 - Verifica contra eventos recorrentes
+                eventos_recorrentes_existentes = self.evento_dao.buscar_recorrentes_por_quadra(id_ginasio, num_quadra)
+                if not eventos_recorrentes_existentes:
+                    print("    [✓] Sem eventos recorrentes para esta quadra. Verificação concluída para esta quadra.")
+                    continue
+
+                dia_da_semana_novo_evento_num = inicio_novo_evento.weekday() # Python: segunda=0, ..., domingo=6
                 
-                for data in datas:
-                    # Definir horário do evento (1 hora de duração por padrão)
-                    data_ini = datetime.combine(data, datetime.min.time()).replace(hour=hora, minute=0)
-                    data_fim = data_ini + timedelta(hours=1)
+                for ev_rec in eventos_recorrentes_existentes:
+                    regra = ev_rec['regra_recorrencia']
+                    print(f"    - Comparando com a regra existente: '{regra}'")
                     
-                    for id_ginasio, num_quadra in lista_quadras_ids:
-                        # Criar agendamento para cada ocorrência do evento recorrente
-                        self._criar_agendamento_para_evento(
-                            cpf_admin_organizador, id_ginasio, num_quadra,
-                            data_ini, data_fim, nome_evento
-                        )
+                    match = re.search(r"Toda ([\w\s-]+), das (\d{2}:\d{2}) às (\d{2}:\d{2})", regra)
+                    if not match:
+                        print("      -> Aviso: Regra existente não correspondeu ao padrão, pulando.")
+                        continue
+
+                    dia_pt_existente, hora_ini_str_existente, hora_fim_str_existente = match.groups()
+                    
+                    dias_map_pt_para_num = { 'Segunda-feira': 0, 'Terça-feira': 1, 'Quarta-feira': 2, 'Quinta-feira': 3, 'Sexta-feira': 4, 'Sábado': 5, 'Domingo': 6 }
+                    dia_existente_num = dias_map_pt_para_num.get(dia_pt_existente.strip())
+                    
+                    print(f"      -> Dia da regra: {dia_existente_num} vs Dia do novo evento: {dia_da_semana_novo_evento_num}")
+                    
+                    if dia_existente_num == dia_da_semana_novo_evento_num:
+                        print("      -> DIAS DA SEMANA COINCIDEM! Verificando horários...")
+                        hora_ini_existente = time.fromisoformat(hora_ini_str_existente)
+                        hora_fim_existente = time.fromisoformat(hora_fim_str_existente)
+                        hora_ini_novo = inicio_novo_evento.time()
+                        hora_fim_novo = fim_novo_evento.time()
+                        
+                        print(f"        - Novo Evento: {hora_ini_novo} -> {hora_fim_novo}")
+                        print(f"        - Regra Existente: {hora_ini_existente} -> {hora_fim_existente}")
+
+                        if max(hora_ini_novo, hora_ini_existente) < min(hora_fim_novo, hora_fim_existente):
+                            print(f"        [X] CONFLITO DE HORÁRIO COM EVENTO RECORRENTE ENCONTRADO!")
+                            return False
+                        
+                        print("        [✓] Sem conflito de horário.")
+                    else:
+                        print("      -> Dias da semana não coincidem. Sem conflito.")
+
+        # CENÁRIO B: Adicionando um Evento Recorrente
+        elif tipo_evento == 'recorrente':
+            print(f"\n[CENÁRIO: RECORRENTE] Verificando conflitos...")
             
-            return True
+            # --- Dados do NOVO evento recorrente ---
+            dia_novo_evento_en = dados_tempo.get('dia_semana') # Ex: 'Monday'
+            hora_ini_novo_evento = time.fromisoformat(dados_tempo.get('hora_inicio_recorrente'))
+            hora_fim_novo_evento = time.fromisoformat(dados_tempo.get('hora_fim_recorrente'))
+            data_fim_recorrencia = datetime.fromisoformat(dados_tempo.get('data_fim')).date()
             
-        except Exception as e:
-            print(f"Erro ao criar agendamentos para evento: {e}")
-            # O evento foi criado, mas os agendamentos falharam
-            return True  # Retorna True porque o evento principal foi criado
+            # Dicionários de mapeamento
+            dias_en_para_num = {'Monday': 0, 'Tuesday': 1, 'Wednesday': 2, 'Thursday': 3, 'Friday': 4, 'Saturday': 5, 'Sunday': 6}
+            dia_novo_evento_num = dias_en_para_num.get(dia_novo_evento_en)
+
+            if dia_novo_evento_num is None:
+                print("ERRO[Serviço]: Dia da semana inválido para novo evento recorrente.")
+                return False
+
+            # --- Início da verificação para cada quadra ---
+            for id_ginasio, num_quadra in lista_quadras_ids:
+                print(f"\n  Verificando Quadra: {num_quadra} (Ginásio: {id_ginasio})")
+                
+                # 2.1 - VERIFICAÇÃO contra outros eventos recorrentes (lógica existente)
+                eventos_recorrentes_existentes = self.evento_dao.buscar_recorrentes_por_quadra(id_ginasio, num_quadra)
+                for ev_rec in eventos_recorrentes_existentes:
+                    regra_existente = ev_rec['regra_recorrencia']
+                    match = re.search(r"Toda ([\w\s-]+), das (\d{2}:\d{2}) às (\d{2}:\d{2})", regra_existente)
+                    if match:
+                        dia_pt_existente, hora_ini_str_existente, hora_fim_str_existente = match.groups()
+                        dias_pt_map = { 'Toda Segunda-feira': 'Monday', 'Toda Terça-feira': 'Tuesday', 'Toda Quarta-feira': 'Wednesday', 'Toda Quinta-feira': 'Thursday', 'Toda Sexta-feira': 'Friday', 'Todo Sábado': 'Saturday', 'Todo Domingo': 'Sunday' }
+                        dia_en_existente = dias_pt_map.get(f"Toda {dia_pt_existente.strip()}")
+                        if dia_en_existente == dia_novo_evento_en:
+                            hora_ini_existente = time.fromisoformat(hora_ini_str_existente)
+                            hora_fim_existente = time.fromisoformat(hora_fim_str_existente)
+                            if max(hora_ini_novo_evento, hora_ini_existente) < min(hora_fim_novo_evento, hora_fim_existente):
+                                print(f"    [X] CONFLITO ENCONTRADO com outro evento recorrente.")
+                                return False
+                print(f"    [✓] Sem conflitos com outros eventos recorrentes.")
+
+                # ======================= INÍCIO DA NOVA LÓGICA =======================
+                # 2.2 - VERIFICAÇÃO contra agendamentos e eventos extraordinários
+                
+                # Simula o futuro: calcula todas as datas em que o evento vai ocorrer
+                datas_da_recorrencia = []
+                hoje = date.today()
+                data_inicial_busca = hoje - timedelta(days=hoje.weekday())
+                
+                data_atual = data_inicial_busca
+                print(f"    - Simulando ocorrências a partir de {data_atual} até {data_fim_recorrencia}...")
+                while data_atual <= data_fim_recorrencia:
+                    if data_atual.weekday() == dia_novo_evento_num:
+                        datas_da_recorrencia.append(data_atual)
+                    data_atual += timedelta(days=1)
+                
+                print(f"    - Simulando {len(datas_da_recorrencia)} ocorrências futuras para o evento recorrente...")
+
+                for data_ocorrencia in datas_da_recorrencia:
+                    # Monta o intervalo de tempo completo para cada ocorrência
+                    inicio_ocorrencia = datetime.combine(data_ocorrencia, hora_ini_novo_evento)
+                    fim_ocorrencia = datetime.combine(data_ocorrencia, hora_fim_novo_evento)
+                    
+                    print(f"      -> Verificando data {data_ocorrencia} das {hora_ini_novo_evento} às {hora_fim_novo_evento}...")
+
+                    # Reutiliza o método do AgendamentoDAO para verificar conflitos nesta data/hora específica
+                    if self.agendamento_dao.verificar_conflito_de_horario(id_ginasio, num_quadra, inicio_ocorrencia, fim_ocorrencia):
+                        print(f"      [X] CONFLITO ENCONTRADO com agendamento/evento extraordinário na data {data_ocorrencia}!")
+                        return False # Conflito encontrado, aborta a criação
+                
+                print(f"    [✓] Sem conflitos com agendamentos ou eventos extraordinários para esta quadra.")
+                # ======================== FIM DA NOVA LÓGICA =========================
+
+        # --- ETAPA 3: Se não houve conflitos, prossegue para a criação ---
+        print("\n[✓] Todas as verificações de conflito passaram. Prosseguindo para a criação do evento.")
+        if tipo_evento == 'recorrente':
+            dia_semana = dados_tempo.get('dia_semana')
+            hora_inicio = dados_tempo.get('hora_inicio_recorrente')
+            hora_fim = dados_tempo.get('hora_fim_recorrente')
+            dias_pt = { 'Monday': 'Toda Segunda-feira', 'Tuesday': 'Toda Terça-feira', 'Wednesday': 'Toda Quarta-feira', 'Thursday': 'Toda Quinta-feira', 'Friday': 'Toda Sexta-feira', 'Saturday': 'Todo Sábado', 'Sunday': 'Todo Domingo' }
+            dia_formatado = dias_pt.get(dia_semana, dia_semana)
+            dados_tempo['regra'] = f"{dia_formatado}, das {hora_inicio} às {hora_fim}"
+            
+        return self.evento_dao.criar(
+            cpf_admin_organizador, nome_evento, desc_evento, tipo_evento,
+            dados_tempo, lista_quadras_ids
+        )
+        
+        
+        
+        
+        
+        
+        
 
     def _criar_agendamento_para_evento(self, cpf_admin, id_ginasio, num_quadra, data_ini, data_fim, nome_evento):
         """

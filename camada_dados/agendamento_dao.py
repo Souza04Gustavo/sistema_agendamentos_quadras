@@ -114,34 +114,197 @@ class AgendamentoDAO:
 
     def buscar_agendamentos_por_quadra(self, id_ginasio, num_quadra, data_inicio, data_fim):
         """
-        Busca agendamentos para uma quadra específica dentro de um intervalo de datas.
-        (Refatorado e corrigido para receber id_ginasio)
+        Busca AGENDAMENTOS, EVENTOS EXTRAORDINÁRIOS e EVENTOS RECORRENTES
+        para uma quadra específica dentro de um intervalo de datas.
         """
         conexao = conectar_banco()
         if not conexao:
             return []
             
         cursor = conexao.cursor(cursor_factory=psycopg2.extras.DictCursor)
-        agendamentos = []
+        ocupacoes = []
         try:
+            # Query com UNION ALL para juntar os três tipos de ocupação
             query = """
-                SELECT * 
+                -- Parte 1: Busca os AGENDAMENTOS normais
+                SELECT 
+                    'agendamento' as tipo_ocupacao, hora_ini, hora_fim,
+                    status_agendamento as status,
+                    NULL as nome_evento,
+                    NULL as regra_recorrencia -- Nova coluna para compatibilidade
                 FROM agendamento
-                WHERE id_ginasio = %s AND num_quadra = %s AND hora_ini BETWEEN %s AND %s
-                ORDER BY hora_ini
+                WHERE 
+                    id_ginasio = %s AND num_quadra = %s
+                    AND status_agendamento != 'cancelado'
+                    AND (hora_ini, hora_fim) OVERLAPS (TIMESTAMP %s, TIMESTAMP %s)
+
+                UNION ALL
+
+                -- Parte 2: Busca os EVENTOS EXTRAORDINÁRIOS
+                SELECT 
+                    'evento' as tipo_ocupacao, ex.data_hora_inicio as hora_ini, ex.data_hora_fim as hora_fim,
+                    'bloqueado' as status,
+                    e.nome as nome_evento,
+                    NULL as regra_recorrencia -- Nova coluna para compatibilidade
+                FROM evento_quadra eq
+                JOIN evento e ON eq.id_evento = e.id_evento
+                JOIN extraordinario ex ON e.id_evento = ex.id_evento
+                WHERE
+                    eq.id_ginasio = %s AND eq.num_quadra = %s
+                    AND (ex.data_hora_inicio, ex.data_hora_fim) OVERLAPS (TIMESTAMP %s, TIMESTAMP %s)
+                
+                UNION ALL
+
+                -- Parte 3: Busca os EVENTOS RECORRENTES
+                SELECT
+                    'evento' as tipo_ocupacao,
+                    NULL as hora_ini, NULL as hora_fim,
+                    'recorrente' as status,
+                    e.nome as nome_evento, -- Agora pega o NOME real do evento
+                    r.regra_recorrencia as regra_recorrencia -- E a regra em sua própria coluna
+                FROM evento_quadra eq
+                JOIN evento e ON eq.id_evento = e.id_evento
+                JOIN recorrente r ON e.id_evento = r.id_evento
+                WHERE
+                    eq.id_ginasio = %s AND eq.num_quadra = %s
+                    AND r.data_fim_recorrencia >= %s;
             """
-            cursor.execute(query, (id_ginasio, num_quadra, data_inicio, data_fim))
+            
+            parametros = (
+                id_ginasio, num_quadra, data_inicio, data_fim,  # Para agendamentos
+                id_ginasio, num_quadra, data_inicio, data_fim,  # Para eventos extraordinários
+                id_ginasio, num_quadra, data_inicio           # Para eventos recorrentes (só precisa da data de início do período)
+            )
+
+            cursor.execute(query, parametros)
+            
             resultados = cursor.fetchall()
             for row in resultados:
-                agendamentos.append(dict(row))
+                ocupacoes.append(dict(row))
+                
+            print(f"DEBUG[DAO]: Encontradas {len(ocupacoes)} ocupações (agendamentos + eventos).")
+                
         except Exception as e:
-            print(f"Erro ao buscar agendamentos por quadra: {e}")
+            print(f"Erro ao buscar agendamentos e eventos por quadra: {e}")
         finally:
             cursor.close()
             conexao.close()
-        return agendamentos
+        return ocupacoes
+    
+    
+    '''
+    def verificar_conflito_de_horario(self, id_ginasio, num_quadra, inicio, fim):
+        """
+        Verifica se existe qualquer agendamento ou evento extraordinário que se sobrepõe
+        a um dado intervalo de tempo para uma quadra específica.
+        Retorna True se houver conflito, False caso contrário.
+        """
+        conexao = conectar_banco()
+        if not conexao:
+            # Se não puder conectar, assume que há um risco e previne a criação.
+            return True 
+            
+        cursor = conexao.cursor()
+        try:
+            query = """
+                -- Verifica conflitos com agendamentos
+                SELECT 1 FROM agendamento
+                WHERE id_ginasio = %s AND num_quadra = %s
+                AND status_agendamento != 'cancelado'
+                AND (hora_ini, hora_fim) OVERLAPS (TIMESTAMP %s, TIMESTAMP %s)
+                
+                UNION ALL
 
+                -- Verifica conflitos com eventos extraordinários
+                SELECT 1 FROM evento_quadra eq
+                JOIN extraordinario ex ON eq.id_evento = ex.id_evento
+                WHERE eq.id_ginasio = %s AND eq.num_quadra = %s
+                AND (ex.data_hora_inicio, ex.data_hora_fim) OVERLAPS (TIMESTAMP %s, TIMESTAMP %s)
+                
+                LIMIT 1; -- Otimização: para assim que encontrar o primeiro conflito.
+            """
+            parametros = (
+                id_ginasio, num_quadra, inicio, fim,
+                id_ginasio, num_quadra, inicio, fim
+            )
+            cursor.execute(query, parametros)
+            
+            # Se a query retornar qualquer linha, significa que há um conflito.
+            conflito_encontrado = cursor.fetchone() is not None
+            
+            if conflito_encontrado:
+                print(f"DEBUG[DAO]: Conflito de horário ENCONTRADO para a quadra {num_quadra} (Gin. {id_ginasio})")
+            
+            return conflito_encontrado
+            
+        except Exception as e:
+            print(f"Erro ao verificar conflito de horário: {e}")
+            return True # Em caso de erro, assume que há conflito por segurança.
+        finally:
+            cursor.close()
+            conexao.close()
+    '''
+    
+    def verificar_conflito_de_horario(self, id_ginasio, num_quadra, inicio, fim):
+        """
+        Verifica se existe qualquer agendamento ou evento extraordinário que se sobrepõe
+        a um dado intervalo de tempo para uma quadra específica.
+        Retorna True se houver conflito, False caso contrário.
+        """
+        conexao = conectar_banco()
+        if not conexao:
+            return True 
+            
+        cursor = conexao.cursor()
+        try:
+            query = """
+                SELECT 1 FROM agendamento
+                WHERE id_ginasio = %s AND num_quadra = %s
+                AND status_agendamento != 'cancelado'
+                AND (hora_ini, hora_fim) OVERLAPS (TIMESTAMP %s, TIMESTAMP %s)
+                
+                UNION ALL
 
+                SELECT 1 FROM evento_quadra eq
+                JOIN extraordinario ex ON eq.id_evento = ex.id_evento
+                WHERE eq.id_ginasio = %s AND eq.num_quadra = %s
+                AND (ex.data_hora_inicio, ex.data_hora_fim) OVERLAPS (TIMESTAMP %s, TIMESTAMP %s)
+                
+                LIMIT 1;
+            """
+            
+            # ======================= INÍCIO DA CORREÇÃO =======================
+            
+            # Formata os objetos datetime para strings no formato ISO 8601
+            # Ex: '2025-11-13 07:00:00'
+            inicio_str = inicio.isoformat(" ")
+            fim_str = fim.isoformat(" ")
+
+            parametros = (
+                id_ginasio, num_quadra, inicio_str, fim_str,
+                id_ginasio, num_quadra, inicio_str, fim_str
+            )
+            
+            # ======================== FIM DA CORREÇÃO =========================
+            
+            cursor.execute(query, parametros)
+            
+            conflito_encontrado = cursor.fetchone() is not None
+            
+            if conflito_encontrado:
+                print(f"DEBUG[DAO]: Conflito de horário ENCONTRADO para a quadra {num_quadra} (Gin. {id_ginasio}) entre {inicio_str} e {fim_str}")
+            else:
+                print(f"DEBUG[DAO]: Sem conflitos encontrados para a quadra {num_quadra} (Gin. {id_ginasio}) entre {inicio_str} e {fim_str}")
+
+            return conflito_encontrado
+            
+        except Exception as e:
+            print(f"Erro ao verificar conflito de horário: {e}")
+            return True
+        finally:
+            cursor.close()
+            conexao.close()
+    
 
 # ==========================================================
 #  BUSCAR AGENDAMENTOS POR USUÁRIO
@@ -695,3 +858,4 @@ def criar_agendamento(cpf_usuario, id_ginasio, num_quadra, data, hora_ini, hora_
     finally:
         cursor.close()
         conexao.close()
+        

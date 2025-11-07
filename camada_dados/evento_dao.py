@@ -113,3 +113,57 @@ class EventoDAO:
             cursor.close()
             conexao.close()
         return sucesso
+    
+    
+    def quadra_pertence_a_evento(self, id_evento, id_ginasio, num_quadra):
+        """
+        Verifica se uma quadra específica está associada a um evento.
+        Retorna True se a associação existir, False caso contrário.
+        """
+        conexao = conectar_banco()
+        if not conexao:
+            return False # Por segurança, se não conectar, não podemos confirmar
+            
+        cursor = conexao.cursor()
+        try:
+            query = """
+                SELECT 1 FROM evento_quadra 
+                WHERE id_evento = %s AND id_ginasio = %s AND num_quadra = %s
+                LIMIT 1;
+            """
+            cursor.execute(query, (id_evento, id_ginasio, num_quadra))
+            
+            # Se fetchone() retornar algo, a linha existe.
+            return cursor.fetchone() is not None
+            
+        except Exception as e:
+            print(f"Erro ao verificar se quadra pertence a evento: {e}")
+            return False
+        finally:
+            cursor.close()
+            conexao.close()
+            
+    def buscar_recorrentes_por_quadra(self, id_ginasio, num_quadra):
+        """
+        Busca todos os eventos recorrentes associados a uma quadra específica.
+        """
+        conexao = conectar_banco()
+        if not conexao: return []
+        cursor = conexao.cursor(cursor_factory=psycopg2.extras.DictCursor)
+        recorrentes = []
+        try:
+            query = """
+                SELECT r.regra_recorrencia
+                FROM evento_quadra eq
+                JOIN recorrente r ON eq.id_evento = r.id_evento
+                WHERE eq.id_ginasio = %s AND eq.num_quadra = %s;
+            """
+            cursor.execute(query, (id_ginasio, num_quadra))
+            for linha in cursor.fetchall():
+                recorrentes.append(dict(linha))
+        except Exception as e:
+            print(f"Erro ao buscar eventos recorrentes por quadra: {e}")
+        finally:
+            cursor.close()
+            conexao.close()
+        return recorrentes

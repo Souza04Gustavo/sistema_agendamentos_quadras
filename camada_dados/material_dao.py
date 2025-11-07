@@ -167,3 +167,57 @@ class MaterialDAO:
             conexao.close()
             
         return materiais
+    
+    def buscar_por_ginasio(self, id_ginasio):
+        """
+        Busca todos os materiais esportivos de um ginásio específico.
+        Retorna uma lista de dicionários.
+        """
+        conexao = conectar_banco()
+        if not conexao:
+            return []
+        
+        cursor = conexao.cursor(cursor_factory=psycopg2.extras.DictCursor)
+        materiais = []
+        try:
+            query = """
+                SELECT * FROM material_esportivo 
+                WHERE id_ginasio = %s 
+                ORDER BY nome;
+            """
+            cursor.execute(query, (id_ginasio,))
+            for linha in cursor.fetchall():
+                materiais.append(dict(linha))
+        except Exception as e:
+            print(f"Erro ao buscar materiais por ginásio: {e}")
+        finally:
+            cursor.close()
+            conexao.close()
+        return materiais
+    
+    def buscar_por_ginasio(self, id_ginasio):
+        """
+        Busca todos os materiais esportivos de um ginásio específico.
+        Retorna uma lista de dicionários.
+        """
+        conexao = conectar_banco()
+        if not conexao:
+            return []
+        
+        cursor = conexao.cursor(cursor_factory=psycopg2.extras.DictCursor)
+        materiais = []
+        try:
+            query = """
+                SELECT * FROM material_esportivo 
+                WHERE id_ginasio = %s 
+                ORDER BY nome;
+            """
+            cursor.execute(query, (id_ginasio,))
+            for linha in cursor.fetchall():
+                materiais.append(dict(linha))
+        except Exception as e:
+            print(f"Erro ao buscar materiais por ginásio: {e}")
+        finally:
+            cursor.close()
+            conexao.close()
+        return materiais

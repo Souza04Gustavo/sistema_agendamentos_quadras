@@ -81,18 +81,34 @@
         <tr>
             <td style="padding: 8px; text-align: center; font-weight: bold;">{{ hora }}</td>
             {% for dia in dias %}
-                {% set ag = agendamentos_por_dia[dia][hora] %}
                 
-                {% if ag %}
-                    <td style="background-color: lightblue; text-align: center; padding: 8px;">Ocupado</td>
+                <!-- ======================= INÍCIO DA CORREÇÃO ======================= -->
+
+                <!-- Acessamos o dicionário usando apenas 'dia', que já é um objeto 'date' -->
+                {% set ocupacao = agendamentos_por_dia[dia][hora] %}
+                
+                <!-- ======================== FIM DA CORREÇÃO ========================= -->
+                
+                {% if ocupacao %}
+                    {# Se existe uma ocupação para este dia/hora #}
+                    {% if ocupacao.tipo_ocupacao == 'evento' %}
+                        <td style="background-color: #ffc107; color: #333; text-align: center; padding: 8px; font-weight: bold; vertical-align: middle;">
+                            {{ ocupacao.nome_evento }}
+                        </td>
+                    {% else %}
+                        <td style="background-color: #add8e6; text-align: center; padding: 8px; vertical-align: middle;">
+                            Ocupado
+                        </td>
+                    {% endif %}
                 {% else %}
-                    <td style="padding: 8px; text-align: center;">
+                    {# Se o horário está livre, mostra o botão para reservar #}
+                    <td style="padding: 8px; text-align: center; vertical-align: middle;">
                         <form action="{{ url_for('fazer_agendamento') }}" method="post" style="margin: 0;">
                             <input type="hidden" name="id_ginasio" value="{{ ginasio_id }}">
                             <input type="hidden" name="num_quadra" value="{{ quadra_id }}">
                             <input type="hidden" name="data" value="{{ dia.strftime('%Y-%m-%d') }}">
                             <input type="hidden" name="hora_ini" value="{{ hora }}">
-                            <input type="hidden" name="hora_fim" value="{{ '%02d:00'|format(hora[:2]|int + 1) }}">
+                            <input type="hidden" name="hora_fim" value="{{ '%02d:00'|format((hora[:2]|int + 1) % 24) }}">
                             
                             <button type="submit" 
                                     style="background: var(--cor-principal); 

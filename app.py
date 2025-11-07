@@ -1,6 +1,7 @@
 from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify
 from datetime import datetime, timedelta
 from camada_dados.usuario_dao import UsuarioDAO
+from camada_dados.agendamento_dao  import AgendamentoDAO
 from modelos.usuario import Aluno, Funcionario, Admin, Servidor # Importe todas as classes necessárias
 from camada_negocio.servicos import ServicoCadastro, ServicoLogin, ServicoAdmin, ServicoBolsista
 from camada_dados.agendamento_dao import buscar_agendamentos_por_usuario
@@ -10,6 +11,7 @@ from camada_dados.agendamento_dao import buscar_ginasios
 from camada_dados.agendamento_dao import get_ginasio_por_id
 from camada_dados.agendamento_dao import verificar_disponibilidade, criar_agendamento, verificar_usuario_existe
 from camada_dados.db_config import conectar_banco
+import re
 
 import os # Para a secret_key
 
@@ -755,28 +757,44 @@ def admin_gerenciar_eventos():
     return render_template('admin_gerenciar_eventos.html', eventos=lista_de_eventos)
 
 
+'''
 @app.route('/admin/eventos/novo', methods=['GET', 'POST'])
 def admin_form_evento():
+    # Proteção da rota
     if session.get('usuario_logado', {}).get('tipo') != 'admin':
         flash('Acesso negado.', 'error')
         return redirect(url_for('index'))
     
     if request.method == 'POST':
-        cpf_admin_organizador = get_form_value('cpf_admin_organizador')
-        nome_evento = get_form_value('nome')
-        desc_evento = get_form_value('descricao')
+        # Dados comuns do formulário
+        cpf_admin_organizador = request.form.get('cpf_admin_organizador')
+        nome_evento = request.form.get('nome')
+        desc_evento = request.form.get('descricao')
         tipo_evento = request.form.get('tipo_evento')
         lista_quadras = request.form.getlist('quadras_selecionadas')
         
         dados_tempo = {}
+        # Lógica para construir os dados de tempo CORRETAMENTE
         if tipo_evento == 'extraordinario':
             dados_tempo['inicio'] = request.form.get('data_hora_inicio')
             dados_tempo['fim'] = request.form.get('data_hora_fim')
         elif tipo_evento == 'recorrente':
-            dados_tempo['regra'] = request.form.get('regra_recorrencia')
+            dia_semana = request.form.get('dia_semana')
+            hora_inicio = request.form.get('hora_inicio_recorrente')
+            hora_fim = request.form.get('hora_fim_recorrente')
+            
+            # Mapeamento de dias
+            dias_pt = {
+                'Monday': 'Toda Segunda-feira', 'Tuesday': 'Toda Terça-feira',
+                'Wednesday': 'Toda Quarta-feira', 'Thursday': 'Toda Quinta-feira',
+                'Friday': 'Toda Sexta-feira', 'Saturday': 'Todo Sábado', 'Sunday': 'Todo Domingo'
+            }
+            dia_formatado = dias_pt.get(dia_semana, dia_semana)
+
+            # A string é construída AQUI, na rota.
+            dados_tempo['regra'] = f"{dia_formatado}, das {hora_inicio} às {hora_fim}"
             dados_tempo['data_fim'] = request.form.get('data_fim_recorrencia')
 
-        # Chama o serviço passando os dados já processados
         sucesso = servico_admin.adicionar_evento(
             cpf_admin_organizador, nome_evento, desc_evento, tipo_evento, dados_tempo, lista_quadras
         )
@@ -784,9 +802,14 @@ def admin_form_evento():
         if sucesso:
             flash('Novo evento criado com sucesso!', 'success')
         else:
-            flash('Erro ao criar o evento. Verifique os dados e tente novamente.', 'error')
+            # Mensagem de erro mais específica
+            flash('Erro ao criar o evento. Verifique se os horários e quadras selecionados não conflitam com agendamentos já existentes.', 'error')
         
-        return redirect(url_for('admin_gerenciar_eventos'))
+        # Redireciona para a lista de eventos ou de volta para o formulário
+        if sucesso:
+            return redirect(url_for('admin_gerenciar_eventos'))
+        else:
+            return redirect(url_for('admin_form_evento'))
 
     # Lógica GET para exibir o formulário (permanece a mesma)
     todas_as_quadras = servico_admin.listar_quadras_para_gerenciar()
@@ -796,66 +819,222 @@ def admin_form_evento():
     return render_template('admin_form_evento.html', 
                            quadras=todas_as_quadras,
                            admins=lista_de_admins)
+'''
 
 
+
+@app.route('/admin/eventos/novo', methods=['GET', 'POST'])
+def admin_form_evento():
+    # Proteção da rota
+    if session.get('usuario_logado', {}).get('tipo') != 'admin':
+        flash('Acesso negado.', 'error')
+        return redirect(url_for('index'))
+    
+    if request.method == 'POST':
+        # Dados comuns do formulário
+        cpf_admin_organizador = request.form.get('cpf_admin_organizador')
+        nome_evento = request.form.get('nome')
+        desc_evento = request.form.get('descricao')
+        tipo_evento = request.form.get('tipo_evento')
+        lista_quadras = request.form.getlist('quadras_selecionadas')
+        
+        dados_tempo = {}
+        # Lógica para construir os dados de tempo
+        if tipo_evento == 'extraordinario':
+            dados_tempo['inicio'] = request.form.get('data_hora_inicio')
+            dados_tempo['fim'] = request.form.get('data_hora_fim')
+        elif tipo_evento == 'recorrente':
+            # Coleta os dados específicos do formulário recorrente
+            dia_semana = request.form.get('dia_semana')
+            hora_inicio_rec = request.form.get('hora_inicio_recorrente')
+            hora_fim_rec = request.form.get('hora_fim_recorrente')
+            
+            # Passa os dados brutos para o dicionário 'dados_tempo'
+            dados_tempo['dia_semana'] = dia_semana
+            dados_tempo['hora_inicio_recorrente'] = hora_inicio_rec
+            dados_tempo['hora_fim_recorrente'] = hora_fim_rec
+            dados_tempo['data_fim'] = request.form.get('data_fim_recorrencia')
+
+        # Chama o serviço passando todos os dados
+        sucesso = servico_admin.adicionar_evento(
+            cpf_admin_organizador, nome_evento, desc_evento, tipo_evento, dados_tempo, lista_quadras
+        )
+        
+        if sucesso:
+            flash('Novo evento criado com sucesso!', 'success')
+            return redirect(url_for('admin_gerenciar_eventos'))
+        else:
+            flash('Erro ao criar o evento. Verifique se os horários para eventos extraordinários não conflitam com agendamentos existentes.', 'error')
+            return redirect(url_for('admin_form_evento'))
+
+    # Lógica GET para exibir o formulário (sem alteração)
+    todas_as_quadras = servico_admin.listar_quadras_para_gerenciar()
+    todos_os_usuarios = servico_admin.listar_usuarios()
+    lista_de_admins = [u for u in todos_os_usuarios if u['tipo'] == 'Admin']
+    
+    return render_template('admin_form_evento.html', 
+                           quadras=todas_as_quadras,
+                           admins=lista_de_admins)
+
+
+'''
 @app.route('/novo_agendamento/<int:ginasio_id>/<int:quadra_id>')
 @app.route('/tabela_agendamento/<int:ginasio_id>/<int:quadra_id>')
 def tabela_agendamento(ginasio_id, quadra_id):
-    # Obter o offset da semana a partir dos parâmetros da URL, padrão 0
+    # 1. Lógica de navegação por semana (permanece a mesma)
     semana_offset = request.args.get('semana', 0, type=int)
+    hoje = datetime.now() + timedelta(weeks=semana_offset)
+    segunda_feira = hoje - timedelta(days=hoje.weekday())
+    dias_da_semana = [segunda_feira.date() + timedelta(days=i) for i in range(7)]
     
-    # Data atual + offset de semanas
-    data_inicio = datetime.now().date() + timedelta(weeks=semana_offset)
-    # Ajustar para começar na segunda-feira
-    data_inicio = data_inicio - timedelta(days=data_inicio.weekday())
-    
-    # Gerar os 7 dias da semana
-    dias = [data_inicio + timedelta(days=i) for i in range(7)]
-    
-    # Horários do dia (exemplo: das 8h às 22h)
-    horarios = [f"{h:02d}:00" for h in range(8, 22)]
-    
-    # Buscar agendamentos existentes
-    from camada_dados.agendamento_dao import buscar_agendamentos_por_quadra
-    agendamentos_por_dia = {}
-    
-    for dia in dias:
-        agendamentos_por_dia[dia] = {}
-        # Buscar agendamentos para este dia específico
-        agendamentos = buscar_agendamentos_por_quadra(ginasio_id, quadra_id, dia)
+    # Define o intervalo completo da semana para a query do banco
+    data_inicio_semana = dias_da_semana[0]
+    data_fim_semana = dias_da_semana[-1] + timedelta(days=1) # Adiciona 1 dia para incluir o último dia por completo
 
-        # E na lógica de verificação de horários:
-        for ag in agendamentos:
-            # Extrair apenas a hora do timestamp
-            hora_ini_ag = ag['hora_ini'].strftime('%H:%M') if hasattr(ag['hora_ini'], 'strftime') else str(ag['hora_ini'])[11:16]
-            hora_fim_ag = ag['hora_fim'].strftime('%H:%M') if hasattr(ag['hora_fim'], 'strftime') else str(ag['hora_fim'])[11:16]
-            
-            # Marcar todas as horas entre hora_ini e hora_fim como ocupadas
-            for hora in horarios:
-                if hora_ini_ag <= hora < hora_fim_ag:
-                    agendamentos_por_dia[dia][hora] = True
+    # 2. Busca de dados (AGORA COMBINADA)
+    # Instancia o DAO de Agendamento
+    from camada_dados.agendamento_dao import AgendamentoDAO
+    agendamento_dao = AgendamentoDAO()
     
-    # Buscar nome do ginásio para exibir
+    # Busca tanto agendamentos quanto eventos para a semana inteira de uma só vez
+    ocupacoes = agendamento_dao.buscar_agendamentos_por_quadra(ginasio_id, quadra_id, data_inicio_semana, data_fim_semana)
+
+    # 3. Processamento dos dados para a tabela
+    horarios = [f"{h:02d}:00" for h in range(7, 23)]
+    agendamentos_por_dia = {dia: {hora: None for hora in horarios} for dia in dias_da_semana}
+
+    for ocup in ocupacoes:
+        # Itera sobre cada hora que a ocupação (agendamento ou evento) cobre
+        hora_atual = ocup['hora_ini']
+        while hora_atual < ocup['hora_fim']:
+            data = hora_atual.date()
+            hora_str = f"{hora_atual.hour:02d}:00"
+            
+            # Verifica se a data e a hora estão na nossa grade de exibição
+            if data in agendamentos_por_dia and hora_str in agendamentos_por_dia[data]:
+                # Armazena o objeto de ocupação inteiro (que contém o tipo e o nome do evento, se houver)
+                agendamentos_por_dia[data][hora_str] = ocup
+            
+            hora_atual += timedelta(hours=1)
+
+    # 4. Busca de dados adicionais (permanece a mesma)
     from camada_dados.agendamento_dao import get_ginasio_por_id
     ginasio = get_ginasio_por_id(ginasio_id)
     nome_ginasio = ginasio.nome if ginasio else f"Ginásio {ginasio_id}"
     
-    # 🆕 BUSCAR MATERIAIS DO GINÁSIO
     from camada_dados.material_dao import MaterialDAO
     material_dao = MaterialDAO()
-    materiais_disponiveis = material_dao.buscar_por_ginasio(ginasio_id)
+    # Supondo que você tenha um método buscar_por_ginasio no MaterialDAO
+    materiais_disponiveis = material_dao.buscar_todos() # Adaptado para buscar todos, filtre se necessário
     
+    # 5. Renderização do template (permanece a mesma, passando os dados processados)
     return render_template('tabela_agendamento.html', 
                          ginasio_id=ginasio_id,
                          quadra_id=quadra_id,
-                         dias=dias,
+                         dias=dias_da_semana,
                          horarios=horarios,
                          agendamentos_por_dia=agendamentos_por_dia,
                          semana_offset=semana_offset,
                          nome_ginasio=nome_ginasio,
-                         materiais_disponiveis=materiais_disponiveis)  # 🆕 NOVO PARÂMETRO
+                         materiais_disponiveis=materiais_disponiveis)
+'''
+
+@app.route('/novo_agendamento/<int:ginasio_id>/<int:quadra_id>')
+@app.route('/tabela_agendamento/<int:ginasio_id>/<int:quadra_id>')
+def tabela_agendamento(ginasio_id, quadra_id):
+    # 1. Lógica de navegação por semanas (mantida)
+    semana_offset = request.args.get('semana', 0, type=int)
+    hoje = datetime.now() + timedelta(weeks=semana_offset)
+    segunda_feira = hoje - timedelta(days=hoje.weekday())
+    dias_da_semana = [segunda_feira.date() + timedelta(days=i) for i in range(7)]
+    
+    data_inicio_semana = dias_da_semana[0]
+    data_fim_semana = dias_da_semana[-1] + timedelta(days=1)
+
+    # 2. Busca de dados
+    dao = AgendamentoDAO()
+    ocupacoes = dao.buscar_agendamentos_por_quadra(ginasio_id, quadra_id, data_inicio_semana, data_fim_semana)
+
+    # 3. Processamento dos dados
+    horarios = [f"{h:02d}:00" for h in range(7, 23)]
+    agendamentos_por_dia = {dia: {hora: None for hora in horarios} for dia in dias_da_semana}
+
+    dias_pt = { 'Monday': 'Toda Segunda-feira', 'Tuesday': 'Toda Terça-feira', 'Wednesday': 'Toda Quarta-feira', 'Thursday': 'Toda Quinta-feira', 'Friday': 'Toda Sexta-feira', 'Saturday': 'Todo Sábado', 'Sunday': 'Todo Domingo' }
+    dias_map_num = { 'Monday': 0, 'Tuesday': 1, 'Wednesday': 2, 'Thursday': 3, 'Friday': 4, 'Saturday': 5, 'Sunday': 6 }
+
+    print("--- DEBUG: Processando Ocupações ---")
+    for ocup in ocupacoes:
+        print(f"Analisando: {ocup}")
+        
+        # Lógica para eventos recorrentes (verificada PRIMEIRO)
+        if ocup['status'] == 'recorrente':
+            regra = ocup['regra_recorrencia']
+            print(f"  -> É recorrente. Regra: '{regra}'")
+            
+            match = re.search(r"Toda ([\w\s-]+), das (\d{2}:\d{2}) às (\d{2}:\d{2})", regra)
+            
+            if match:
+                dia_evento_pt, hora_ini_str, hora_fim_str = match.groups()
+                dia_semana_en = next((key for key, val in dias_pt.items() if val == f"Toda {dia_evento_pt}"), None)
+                
+                if dia_semana_en:
+                    dia_semana_num = dias_map_num.get(dia_semana_en)
+                    if dia_semana_num is not None:
+                        data_do_evento_na_semana = dias_da_semana[dia_semana_num]
+                        
+                        hora_ini_evento = int(hora_ini_str[:2])
+                        hora_fim_evento = int(hora_fim_str[:2])
+                        
+                        # ======================= INÍCIO DA CORREÇÃO =======================
+                        
+                        # Se a hora final for 00, trate como 24 para o range funcionar
+                        if hora_fim_evento == 0:
+                            hora_fim_evento = 24
+                        
+                        # ======================== FIM DA CORREÇÃO =========================
+                        
+                        for hora in range(hora_ini_evento, hora_fim_evento):
+                            hora_str_loop = f"{hora:02d}:00"
+                            if hora_str_loop in agendamentos_por_dia[data_do_evento_na_semana]:
+                                agendamentos_por_dia[data_do_evento_na_semana][hora_str_loop] = ocup
+                                print(f"    -> PREENCHIDO (Recorrente): {data_do_evento_na_semana} às {hora_str_loop}")
+            else:
+                print("    -> ERRO: A regra de recorrência não correspondeu ao padrão esperado.")
 
 
+        # Lógica para agendamentos e eventos extraordinários
+        elif ocup['hora_ini'] is not None and ocup['hora_fim'] is not None:
+            
+            # Verificação de segurança: só processa se o fim for depois do início
+            if ocup['hora_fim'] <= ocup['hora_ini']:
+                print(f"  -> AVISO: Ocupação ID (ou nome '{ocup['nome_evento']}') tem hora_fim antes de hora_ini. Pulando.")
+                continue # Pula para a próxima ocupação no loop
+            print(f"  -> É agendamento/extraordinário. Período: {ocup['hora_ini']} a {ocup['hora_fim']}")
+            hora_atual = ocup['hora_ini']
+            while hora_atual < ocup['hora_fim']:
+                data = hora_atual.date()
+                hora_str = f"{hora_atual.hour:02d}:00"
+                if data in agendamentos_por_dia and hora_str in agendamentos_por_dia[data]:
+                    agendamentos_por_dia[data][hora_str] = ocup
+                    print(f"    -> PREENCHIDO: {data} às {hora_str}")
+                hora_atual += timedelta(hours=1)
+    print("--- FIM DEBUG ---")
+
+    # 4. Busca de dados adicionais
+    from camada_dados.agendamento_dao import get_ginasio_por_id
+    ginasio = get_ginasio_por_id(ginasio_id)
+    nome_ginasio = ginasio.nome if ginasio else f"Ginásio {ginasio_id}"
+    
+    from camada_dados.material_dao import MaterialDAO
+    material_dao = MaterialDAO()
+    # Chama o novo método para buscar materiais APENAS do ginásio atual
+    materiais_disponiveis = material_dao.buscar_por_ginasio(ginasio_id)
+
+    return render_template('tabela_agendamento.html', 
+                         ginasio_id=ginasio_id, quadra_id=quadra_id, dias=dias_da_semana,
+                         horarios=horarios, agendamentos_por_dia=agendamentos_por_dia,
+                         semana_offset=semana_offset, nome_ginasio=nome_ginasio,
+                         materiais_disponiveis=materiais_disponiveis)
     
 @app.route('/fazer_agendamento', methods=['POST'])
 def fazer_agendamento():
